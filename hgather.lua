@@ -167,9 +167,13 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
             broken = false;
             lost = false;
 
-
+            --keep window open
             if (unable or success) then
                 hgather.open = true;
+            end
+
+            --count attempt
+            if (unable) then 
                 hgather.numDigs = hgather.numDigs + 1;
             end
         
