@@ -68,7 +68,7 @@ end
 
 function updatePricing() 
     -- Grab Pricing
-    local path = ('%saddons\\hastegather\\%s.txt'):fmt(AshitaCore:GetInstallPath(), 'itempricing');
+    local path = ('%saddons\\hgather\\%s.txt'):fmt(AshitaCore:GetInstallPath(), 'itempricing');
     local file = path
     local lines = lines_from(file)
 
