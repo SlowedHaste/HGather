@@ -137,8 +137,8 @@ papaka grass:10
 platinum beastcoin:10
 kopparnickel ore:10
 ancient lumber:10
-cinnamon:10
-rattan lumber:10
+stick of cinnamon:10
+piece of rattan lumber:10
 mushroom locust:10
 kazham pineapple:10
 dryad root:10

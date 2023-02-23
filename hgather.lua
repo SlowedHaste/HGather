@@ -183,7 +183,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
                     if (hgather.diggingRewards[success] == nil) then
                         hgather.diggingRewards[success] = 1
                     elseif (hgather.diggingRewards[success] ~= nil) then
-                        hgather.diggingRewards[success] = hgather.diggingRewards[txt] + 1
+                        hgather.diggingRewards[success] = hgather.diggingRewards[success] + 1
                     end
                 end
 
