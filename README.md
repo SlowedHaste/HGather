@@ -1,5 +1,5 @@
 # HGather
-This is a simple dig tracker for FFXI. This addon works with Ashita Core v4. 
+This is a simple dig tracker for FFXI. This addon works with Ashita v4. 
 
 
 ## Commands
