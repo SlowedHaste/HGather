@@ -53,11 +53,11 @@ end
 
 function mysplit (inputstr, sep)
     if sep == nil then
-            sep = "%s"
+        sep = "%s"
     end
     local t={}
     for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-            table.insert(t, str)
+        table.insert(t, str)
     end
     return t
 end
@@ -215,7 +215,7 @@ ashita.events.register('d3d_present', 'present_cb', function ()
 
         for k,v in pairs(hgather.diggingRewards) do
             if (hgather.pricing[k] ~= nil) then
-                totalworth = totalworth + hgather.pricing[k]
+                totalworth = totalworth + hgather.pricing[k] * v
             end
 
             imgui.Text(k + ": " + "x" + v)
