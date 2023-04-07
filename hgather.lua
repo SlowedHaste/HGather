@@ -215,11 +215,13 @@ ashita.events.register('d3d_present', 'present_cb', function ()
         imgui.Separator();
 
         for k,v in pairs(hgather.diggingRewards) do
+            itemTotal = 0
             if (hgather.pricing[k] ~= nil) then
                 totalworth = totalworth + hgather.pricing[k] * v
+                itemTotal = v * hgather.pricing[k]
             end
-
-            imgui.Text(k + ": " + "x" + v)
+                
+            imgui.Text(k + ": " + "x" + v + " (" + itemTotal + "g)")
         end
 
         imgui.Separator();
