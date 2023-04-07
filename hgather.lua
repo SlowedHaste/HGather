@@ -28,6 +28,7 @@ hgather = T{
     isAttempt = false,
     numDigs = 0,
     numItems = 0,
+    skillUp = 0.0,
     lastDig = os.time(),
     diggingRewards = { },
     pricing = { }
@@ -99,6 +100,7 @@ ashita.events.register('text_out', 'text_out_callback1', function (e)
             hgather.diggingRewards = { }
             hgather.isAttempt = 0
             hgather.numItems = 0
+            hgather.skillUp = 0.0
             print('HGather: Digging session has been reset')
         end
     end
@@ -140,13 +142,18 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
 
     success = string.match(message, "obtained: (.*).") or successBreak
     unable = string.contains(message, "you dig and you dig");
-
+    skillUp = string.match(message, "skill increases by (.*) raising");
+	
     if (success or unable) then
         hgather.isAttempt = true
     else
         hgather.isAttempt = false
     end
    
+    --skillup count
+    if (skillUp) then
+        hgather.skillUp = hgather.skillUp + skillUp;
+    end
 
     if hgather.isAttempt then 
         successBreak = false;
@@ -212,6 +219,10 @@ ashita.events.register('d3d_present', 'present_cb', function ()
         imgui.Text('~~ Digging Session ~~')
         imgui.Text("Attempted Digs: " + hgather.numDigs)
         imgui.Text('Items Dug: ' + hgather.numItems)
+        --Only show skillup line if one was seen during session
+        if (hgather.skillUp ~= 0.0) then
+            imgui.Text('Skillups: ' + hgather.skillUp)
+        end
         imgui.Separator();
 
         for k,v in pairs(hgather.diggingRewards) do
