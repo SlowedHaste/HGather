@@ -215,10 +215,16 @@ ashita.events.register('d3d_present', 'present_cb', function ()
 
     if (imgui.Begin('HasteGather', hgather.open, bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoSavedSettings, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
         totalworth = 0
+        accuracy = 0
+
+        if (hgather.numDigs ~= 0) then
+            accuracy = (hgather.numItems / hgather.numDigs) * 100
+        end
         
         imgui.Text('~~ Digging Session ~~')
         imgui.Text("Attempted Digs: " + hgather.numDigs)
         imgui.Text('Items Dug: ' + hgather.numItems)
+        imgui.Text('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%')
         --Only show skillup line if one was seen during session
         if (hgather.skillUp ~= 0.0) then
             imgui.Text('Skillups: ' + hgather.skillUp)
