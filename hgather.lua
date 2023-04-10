@@ -84,6 +84,44 @@ function updatePricing()
     end
 end
 
+function reportSession()
+    totalworth = 0
+    accuracy = 0
+
+    if (hgather.numDigs ~= 0) then
+        accuracy = (hgather.numItems / hgather.numDigs) * 100
+    end
+
+    print('~~ Digging Session ~~')
+    print("Attempted Digs: " + hgather.numDigs)
+    print('Items Dug: ' + hgather.numItems)
+    print('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%')
+        
+    print('~~ Digging Session ~~')
+    print("Attempted Digs: " + hgather.numDigs)
+    print('Items Dug: ' + hgather.numItems)
+    --Only show skillup line if one was seen during session
+    if (hgather.skillUp ~= 0.0) then
+        print('Skillups: ' + hgather.skillUp)
+    end
+    print('----------')
+
+    for k,v in pairs(hgather.diggingRewards) do
+        itemTotal = 0
+        if (hgather.pricing[k] ~= nil) then
+            totalworth = totalworth + hgather.pricing[k] * v
+            itemTotal = v * hgather.pricing[k]
+        end
+
+                
+        print(k + ": " + "x" + v + " (" + itemTotal + "g)")
+    end
+
+    print('----------')
+    print("Gil Made: " + totalworth + 'g')
+end
+
+
 ----------------------------------------------------------------------------------------------------
 -- Load Event
 ----------------------------------------------------------------------------------------------------
@@ -126,8 +164,15 @@ ashita.events.register('text_out', 'text_out_callback1', function (e)
     end
 
     if (not e.injected) then
+        if (string.match(e.message, '/hgather report')) then
+            print('HGather: Reporting current session')
+            reportSession()
+        end
+    end
+
+    if (not e.injected) then
         if (string.match(e.message, '/hgather help')) then
-            print('HGather: Commands are Open, Close, Reset, Update, Help')
+            print('HGather: Commands are Open, Close, Reset, Update, Report, Help')
         end
     end
 end);
