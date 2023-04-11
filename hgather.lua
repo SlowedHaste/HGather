@@ -181,6 +181,7 @@ end);
 -- Parse Digging Items + Main Logic
 ----------------------------------------------------------------------------------------------------
 ashita.events.register('text_in', 'text_in_cb', function (e)
+    lasttime = os.difftime(os.time(), hgather.lastDig);
     message = e.message;
     message = string.lower(message);
     message = string.strip_colors(message);
@@ -189,7 +190,8 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
     unable = string.contains(message, "you dig and you dig");
     skillUp = string.match(message, "skill increases by (.*) raising");
 	
-    if (success or unable) then
+    -- only set isAttempt if we dug within last 15 seconds
+    if ((success or unable) and lasttime < 15) then
         hgather.isAttempt = true
     else
         hgather.isAttempt = false
