@@ -146,7 +146,7 @@ ashita.events.register('text_out', 'text_out_callback1', function (e)
     if (not e.injected) then
         if (string.match(e.message, '/hgather open')) then
             hgather.open = true;
-            gather.lastDig = os.time();
+            hgather.lastDig = os.time();
         end
     end
 
