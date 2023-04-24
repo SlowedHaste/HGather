@@ -1,7 +1,7 @@
 addon.name = 'hgather';
 addon.description = 'Simple dig tracker.';
 addon.author = 'Hastega';
-addon.version = '1.0.0';
+addon.version = '1.1.1';
 addon.commands = {'/hgather'};
 
 ----------------------------------------------------------------------------------------------------
@@ -12,7 +12,8 @@ local imgui = require('imgui');
 local settings = require('settings');
 local ffi = require('ffi');
 local d3d = require 'd3d8';
-local d3d8dev   = d3d.get_device();
+local d3d8dev = d3d.get_device();
+local data = require('constants');
 
 local ashitaResourceManager = AshitaCore:GetResourceManager();
 local ashitaChatManager     = AshitaCore:GetChatManager();
@@ -29,9 +30,13 @@ hgather = T{
     numDigs = 0,
     numItems = 0,
     skillUp = 0.0,
-    lastDig = os.time(),
+    firstDig = 0,
+    lastDig = ashita.time.clock()['ms'],
     diggingRewards = { },
-    pricing = { }
+    pricing = { },
+    digTiming = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    digPerMinute = 0,
+    digIndex = 1
 };
 
 ----------------------------------------------------------------------------------------------------
@@ -85,42 +90,66 @@ function updatePricing()
 end
 
 function reportSession()
-    totalworth = 0
-    accuracy = 0
+    totalWorth = 0;
+    accuracy = 0;
 
     if (hgather.numDigs ~= 0) then
-        accuracy = (hgather.numItems / hgather.numDigs) * 100
+        accuracy = (hgather.numItems / hgather.numDigs) * 100;
     end
 
-    print('~~ Digging Session ~~')
-    print("Attempted Digs: " + hgather.numDigs)
-    print('Items Dug: ' + hgather.numItems)
-    print('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%')
-        
-    print('~~ Digging Session ~~')
-    print("Attempted Digs: " + hgather.numDigs)
-    print('Items Dug: ' + hgather.numItems)
+    print('~~ Digging Session ~~');
+    print("Attempted Digs: " + hgather.numDigs);
+    print('Items Dug: ' + hgather.numItems);
+    print('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%');
     --Only show skillup line if one was seen during session
     if (hgather.skillUp ~= 0.0) then
-        print('Skillups: ' + hgather.skillUp)
+        print('Skillups: ' + hgather.skillUp);
     end
-    print('----------')
+    print('----------');
 
     for k,v in pairs(hgather.diggingRewards) do
-        itemTotal = 0
+        itemTotal = 0;
         if (hgather.pricing[k] ~= nil) then
-            totalworth = totalworth + hgather.pricing[k] * v
-            itemTotal = v * hgather.pricing[k]
+            totalWorth = totalWorth + hgather.pricing[k] * v;
+            itemTotal = v * hgather.pricing[k];
         end
 
-                
-        print(k + ": " + "x" + v + " (" + itemTotal + "g)")
+        print(k + ": " + "x" + v + " (" + itemTotal + "g)");
     end
 
-    print('----------')
-    print("Gil Made: " + totalworth + 'g')
+    print('----------');
+    print("Gil Made: " + totalWorth + 'g');
 end
 
+
+----------------------------------------------------------------------------------------------------
+-- Helper functions borrowed from luashitacast
+----------------------------------------------------------------------------------------------------
+function GetTimestamp()
+    local pVanaTime = ashita.memory.find('FFXiMain.dll', 0, 'B0015EC390518B4C24088D4424005068', 0, 0);
+    local pointer = ashita.memory.read_uint32(pVanaTime + 0x34);
+    local rawTime = ashita.memory.read_uint32(pointer + 0x0C) + 92514960;
+    local timestamp = {};
+    timestamp.day = math.floor(rawTime / 3456);
+    timestamp.hour = math.floor(rawTime / 144) % 24;
+    timestamp.minute = math.floor((rawTime % 144) / 2.4);
+    return timestamp;
+end
+
+function GetWeather()
+    local pWeather = ashita.memory.find('FFXiMain.dll', 0, '66A1????????663D????72', 0, 0);
+    local pointer = ashita.memory.read_uint32(pWeather + 0x02);
+    return ashita.memory.read_uint8(pointer + 0);
+end
+
+function GetMoon()
+    local timestamp = GetTimestamp();
+    local moonIndex = ((timestamp.day + 26) % 84) + 1;
+    local moonTable = {};
+    moonTable.MoonPhase = MoonPhase[moonIndex];
+    moonTable.MoonPhasePercent = MoonPhasePercent[moonIndex];
+    return moonTable;
+end
 
 ----------------------------------------------------------------------------------------------------
 -- Load Event
@@ -146,7 +175,7 @@ ashita.events.register('text_out', 'text_out_callback1', function (e)
     if (not e.injected) then
         if (string.match(e.message, '/hgather open')) then
             hgather.open = true;
-            hgather.lastDig = os.time();
+            hgather.lastDig = ashita.time.clock()['ms'];
         end
     end
 
@@ -181,7 +210,7 @@ end);
 -- Parse Digging Items + Main Logic
 ----------------------------------------------------------------------------------------------------
 ashita.events.register('text_in', 'text_in_cb', function (e)
-    lasttime = os.difftime(os.time(), hgather.lastDig);
+    lastDigSecs = hgather.digTiming[hgather.digIndex] / 1000.0
     message = e.message;
     message = string.lower(message);
     message = string.strip_colors(message);
@@ -191,7 +220,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
     skillUp = string.match(message, "skill increases by (.*) raising");
 	
     -- only set isAttempt if we dug within last 15 seconds
-    if ((success or unable) and lasttime < 15) then
+    if ((success or unable) and lastDigSecs < 15) then
         hgather.isAttempt = true
     else
         hgather.isAttempt = false
@@ -243,7 +272,27 @@ ashita.events.register('packet_out', 'packet_out_callback1', function (e)
     if e.id == 0x01A then -- digging
         if struct.unpack("H", e.data_modified, 0x0A) == 0x1104 then -- digging
             hgather.isAttempt = true;
-            hgather.lastDig = os.time();
+            digDiff = (ashita.time.clock()['ms'] - hgather.lastDig);
+            hgather.lastDig = ashita.time.clock()['ms'];
+            if (hgather.firstDig == 0) then
+                hgather.firstDig = ashita.time.clock()['ms'];
+            end
+            if (digDiff > 1000) then
+                -- print('digdiff: ' + digDiff)
+                hgather.digTiming[hgather.digIndex] = digDiff;
+                timingTotal = 0;
+                for i=1, #hgather.digTiming do
+                    timingTotal = timingTotal + hgather.digTiming[i];
+                end
+        
+                hgather.digPerMinute = 60 / ((timingTotal / 1000.0) / #hgather.digTiming);
+    
+                if ( hgather.digIndex >= #hgather.digTiming ) then
+                    hgather.digIndex = 1;
+                else
+                    hgather.digIndex = hgather.digIndex + 1
+                end
+            end
         end
     end
 end)
@@ -252,7 +301,8 @@ end)
 -- GUI
 ----------------------------------------------------------------------------------------------------
 ashita.events.register('d3d_present', 'present_cb', function () 
-    lasttime = os.difftime(os.time(), hgather.lastDig);
+    local digDiff = ashita.time.clock()['ms'] - hgather.lastDig;
+    local elapsedTime = ashita.time.clock()['ms'] - hgather.firstDig;
     if (hgather.open == false) then
         return;
     end
@@ -261,42 +311,48 @@ ashita.events.register('d3d_present', 'present_cb', function ()
     imgui.SetNextWindowSize({ 250, -1, }, ImGuiCond_Always);
 
     if (imgui.Begin('HasteGather', hgather.open, bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoSavedSettings, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
-        totalworth = 0
-        accuracy = 0
+        local totalWorth = 0;
+        local accuracy = 0;
+        local moonTable = GetMoon();
+        local moonPhase = moonTable.MoonPhase;
+        local moonPercent = moonTable.MoonPhasePercent;
 
         if (hgather.numDigs ~= 0) then
-            accuracy = (hgather.numItems / hgather.numDigs) * 100
+            accuracy = (hgather.numItems / hgather.numDigs) * 100;
         end
         
-        imgui.Text('~~ Digging Session ~~')
-        imgui.Text("Attempted Digs: " + hgather.numDigs)
-        imgui.Text('Items Dug: ' + hgather.numItems)
-        imgui.Text('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%')
+        imgui.Text('~~ Digging Session ~~');
+        imgui.Text('Attempted Digs: ' + hgather.numDigs + ' (' + string.format('%.2f', hgather.digPerMinute) + ' dpm)');
+        imgui.Text('Greens Cost: ' + hgather.numDigs * 62);
+        imgui.Text('Items Dug: ' + hgather.numItems);
+        imgui.Text('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%');
+        imgui.Text('Moon: ' + moonPhase + ' ('+ moonPercent + '%%)');
         --Only show skillup line if one was seen during session
         if (hgather.skillUp ~= 0.0) then
-            imgui.Text('Skillups: ' + hgather.skillUp)
+            imgui.Text('Skillups: ' + hgather.skillUp);
         end
         imgui.Separator();
 
         for k,v in pairs(hgather.diggingRewards) do
-            itemTotal = 0
+            itemTotal = 0;
             if (hgather.pricing[k] ~= nil) then
-                totalworth = totalworth + hgather.pricing[k] * v
-                itemTotal = v * hgather.pricing[k]
+                totalWorth = totalWorth + hgather.pricing[k] * v;
+                itemTotal = v * hgather.pricing[k];
             end
                 
-            imgui.Text(k + ": " + "x" + v + " (" + itemTotal + "g)")
+            imgui.Text(k + ": " + "x" + v + " (" + itemTotal + "g)");
         end
 
         imgui.Separator();
-        imgui.Text("Gil Made: " + totalworth + 'g')
+        gilHour = math.floor((totalWorth / (elapsedTime / 1000.0)) * 3600); 
+        imgui.Text("Gil Made: " + totalWorth + "g" + " (" + gilHour + " gph)");
 
         --List things gotten for digging session
     end
 
     --end session
-    if (lasttime > 300) then
-        imgui.End()
+    if ((digDiff / 1000.0) > 300) then
+        imgui.End();
         hgather.open = false;
     end
 end)
