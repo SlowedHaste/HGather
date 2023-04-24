@@ -43,49 +43,49 @@ hgather = T{
 -- Helper Functions
 ----------------------------------------------------------------------------------------------------
 function file_exists(file)
-    local f = io.open(file, "rb")
+    local f = io.open(file, "rb");
     if f then f:close() end
-    return f ~= nil
+    return f ~= nil;
 end
   
 function lines_from(file)
     if not file_exists(file) then return {} end
-    local lines = {}
+    local lines = {};
     for line in io.lines(file) do 
-      lines[#lines + 1] = line
+      lines[#lines + 1] = line;
     end
-    return lines
+    return lines;
 end
 
 function mysplit (inputstr, sep)
     if sep == nil then
-        sep = "%s"
+        sep = "%s";
     end
-    local t={}
+    local t={};
     for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
-        table.insert(t, str)
+        table.insert(t, str);
     end
-    return t
+    return t;
 end
 
 function updatePricing() 
     -- Grab Pricing
     local path = ('%saddons\\hgather\\%s.txt'):fmt(AshitaCore:GetInstallPath(), 'itempricing');
-    local file = path
-    local lines = lines_from(file)
+    local file = path;
+    local lines = lines_from(file);
 
     -- print all line numbers and their contents
     for k,v in pairs(lines) do
         for k2, v2 in pairs(mysplit(v, ':')) do
             if (k2 == 1) then
-                itemname = v2
+                itemname = v2;
             end
             if (k2 == 2) then
-                itemvalue = v2
+                itemvalue = v2;
             end
         end
 
-        hgather.pricing[itemname] = itemvalue
+        hgather.pricing[itemname] = itemvalue;
     end
 end
 
@@ -155,7 +155,7 @@ end
 -- Load Event
 ----------------------------------------------------------------------------------------------------
 ashita.events.register('load', 'load_cb', function()
-    updatePricing()
+    updatePricing();
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -164,11 +164,11 @@ end)
 ashita.events.register('text_out', 'text_out_callback1', function (e)
     if (not e.injected) then
         if (string.match(e.message, '/hgather reset')) then
-            hgather.diggingRewards = { }
-            hgather.isAttempt = 0
-            hgather.numItems = 0
-            hgather.skillUp = 0.0
-            print('HGather: Digging session has been reset')
+            hgather.diggingRewards = { };
+            hgather.isAttempt = 0;
+            hgather.numItems = 0;
+            hgather.skillUp = 0.0;
+            print('HGather: Digging session has been reset');
         end
     end
 
@@ -187,21 +187,21 @@ ashita.events.register('text_out', 'text_out_callback1', function (e)
 
     if (not e.injected) then
         if (string.match(e.message, '/hgather update')) then
-            updatePricing()
-            print('HGather: Pricing has been Updated.')
+            updatePricing();
+            print('HGather: Pricing has been Updated.');
         end
     end
 
     if (not e.injected) then
         if (string.match(e.message, '/hgather report')) then
-            print('HGather: Reporting current session')
-            reportSession()
+            print('HGather: Reporting current session');
+            reportSession();
         end
     end
 
     if (not e.injected) then
         if (string.match(e.message, '/hgather help')) then
-            print('HGather: Commands are Open, Close, Reset, Update, Report, Help')
+            print('HGather: Commands are Open, Close, Reset, Update, Report, Help');
         end
     end
 end);
@@ -210,20 +210,20 @@ end);
 -- Parse Digging Items + Main Logic
 ----------------------------------------------------------------------------------------------------
 ashita.events.register('text_in', 'text_in_cb', function (e)
-    lastDigSecs = hgather.digTiming[hgather.digIndex] / 1000.0
+    lastDigSecs = hgather.digTiming[hgather.digIndex] / 1000.0;
     message = e.message;
     message = string.lower(message);
     message = string.strip_colors(message);
 
-    success = string.match(message, "obtained: (.*).") or successBreak
+    success = string.match(message, "obtained: (.*).") or successBreak;
     unable = string.contains(message, "you dig and you dig");
     skillUp = string.match(message, "skill increases by (.*) raising");
 	
     -- only set isAttempt if we dug within last 15 seconds
     if ((success or unable) and lastDigSecs < 15) then
-        hgather.isAttempt = true
+        hgather.isAttempt = true;
     else
-        hgather.isAttempt = false
+        hgather.isAttempt = false;
     end
    
     --skillup count
@@ -233,7 +233,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
 
     if hgather.isAttempt then 
         successBreak = false;
-        success = string.match(message, "obtained: (.*).") or successBreak
+        success = string.match(message, "obtained: (.*).") or successBreak;
         unable = string.contains(message, "you dig and you dig");
         broken = false;
         lost = false;
@@ -256,9 +256,9 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
 
             if (success ~= nil) then
                 if (hgather.diggingRewards[success] == nil) then
-                    hgather.diggingRewards[success] = 1
+                    hgather.diggingRewards[success] = 1;
                 elseif (hgather.diggingRewards[success] ~= nil) then
-                    hgather.diggingRewards[success] = hgather.diggingRewards[success] + 1
+                    hgather.diggingRewards[success] = hgather.diggingRewards[success] + 1;
                 end
             end
         end
@@ -290,7 +290,7 @@ ashita.events.register('packet_out', 'packet_out_callback1', function (e)
                 if ( hgather.digIndex >= #hgather.digTiming ) then
                     hgather.digIndex = 1;
                 else
-                    hgather.digIndex = hgather.digIndex + 1
+                    hgather.digIndex = hgather.digIndex + 1;
                 end
             end
         end
