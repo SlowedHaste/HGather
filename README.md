@@ -9,6 +9,8 @@ This is a simple dig tracker for FFXI. This addon works with Ashita v4.
 
 /hgather update - Updates the pricing for items based on the itempricing.txt file
 
+/hgather report - Prints the dig data to chatlog
+
 /hgather reset - Resets the digging data
 
 ## Pricing
