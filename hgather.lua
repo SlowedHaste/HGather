@@ -226,12 +226,12 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
         hgather.isAttempt = false;
     end
    
-    --skillup count
-    if (skillUp) then
-        hgather.skillUp = hgather.skillUp + skillUp;
-    end
-
     if hgather.isAttempt then 
+        --skillup count
+        if (skillUp) then
+            hgather.skillUp = hgather.skillUp + skillUp;
+        end
+
         successBreak = false;
         success = string.match(message, "obtained: (.*).") or successBreak;
         unable = string.contains(message, "you dig and you dig");
