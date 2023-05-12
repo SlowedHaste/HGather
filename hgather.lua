@@ -1,82 +1,191 @@
-addon.name = 'hgather';
-addon.description = 'Simple dig tracker.';
-addon.author = 'Hastega';
-addon.version = '1.1.1';
-addon.commands = {'/hgather'};
+--[[
+* Goal of this addon is to build on hgather, adding configurable elements
+* and eventually extending support to other HELM activities
+*
+* Used atom0s equipmon as a base for the config elements of this addon
+* https://ashitaxi.com/';
+--]]
 
-----------------------------------------------------------------------------------------------------
--- Variables
-----------------------------------------------------------------------------------------------------
-local common = require('common');
-local imgui = require('imgui');
-local settings = require('settings');
-local ffi = require('ffi');
-local d3d = require 'd3d8';
+addon.name      = 'hgather';
+addon.author    = 'Hastega';
+addon.version   = '1.3';
+addon.desc      = 'General purpose gathering tracker.';
+addon.link      = 'https://github.com/SlowedHaste/HGather';
+addon.commands  = {'/hgather'};
+
+require('common');
+local chat      = require('chat');
+local d3d       = require('d3d8');
+local ffi       = require('ffi');
+local fonts     = require('fonts');
+local imgui     = require('imgui');
+local prims     = require('primitives');
+local scaling   = require('scaling');
+local settings  = require('settings');
+local data      = require('constants');
+
+local C = ffi.C;
 local d3d8dev = d3d.get_device();
-local data = require('constants');
 
-local ashitaResourceManager = AshitaCore:GetResourceManager();
-local ashitaChatManager     = AshitaCore:GetChatManager();
-local ashitaDataManager     = AshitaCore:GetMemoryManager();
-local ashitaParty           = ashitaDataManager:GetParty();
-local ashitaPlayer          = ashitaDataManager:GetPlayer();
-local ashitaInventory       = ashitaDataManager:GetInventory();
-local ashitaTarget          = ashitaDataManager:GetTarget();
-local ashitaEntity          = ashitaDataManager:GetEntity();
-
-hgather = T{
-    open = false,
-    isAttempt = false,
-    numDigs = 0,
-    numItems = 0,
-    skillUp = 0.0,
-    firstDig = 0,
-    lastDig = ashita.time.clock()['ms'],
-    diggingRewards = { },
-    pricing = { },
-    digTiming = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    digPerMinute = 0,
-    digIndex = 1
+-- Default Settings
+local default_settings = T{
+    visible = T{ true, },
+    dig_skillups = T{ true, },
+    moon_display = T{ true, },
+    gysahl_subtract = T{ false, },
+    display_timeout = T{ 600 },
+    opacity = T{ 1.0, },
+    padding = T{ 1.0, },
+    scale = T{ 1.0, },
+    gysahl_cost = T{ 62 },
+    item_index = ItemIndex,
+    font_scale = T{ 1.0 },
+    x = T{ 100, },
+    y = T{ 100, },
 };
 
-----------------------------------------------------------------------------------------------------
--- Helper Functions
-----------------------------------------------------------------------------------------------------
-function file_exists(file)
-    local f = io.open(file, "rb");
-    if f then f:close() end
-    return f ~= nil;
-end
-  
-function lines_from(file)
-    if not file_exists(file) then return {} end
-    local lines = {};
-    for line in io.lines(file) do 
-      lines[#lines + 1] = line;
+-- HGather Variables
+local hgather = T{
+    settings = settings.load(default_settings),
+
+    -- HGather movement variables..
+    move = T{
+        dragging = false,
+        drag_x = 0,
+        drag_y = 0,
+        shift_down = false,
+    },
+
+    -- Editor variables..
+    editor = T{
+        is_open = T{ false, },
+    },
+
+    is_attempt = false,
+    num_digs = 0,
+    num_items = 0,
+    dig_skillup = 0.0,
+    first_dig = 0,
+    last_dig = ashita.time.clock()['ms'],
+    digging_rewards = { },
+    pricing = T{ },
+    dig_timing = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    dig_index = 1,
+    dig_per_minute = 0,
+    gil_per_hour = 0,
+};
+
+--[[
+* Renders the HGather settings editor.
+--]]
+local function render_editor()
+    if (not hgather.editor.is_open[1]) then
+        return;
     end
-    return lines;
+
+    imgui.SetNextWindowSize({ 500, 600, });
+    imgui.SetNextWindowSizeConstraints({ 500, 600, }, { FLT_MAX, FLT_MAX, });
+    if (imgui.Begin('HGather##Config', hgather.editor.is_open)) then
+
+        if (imgui.Button('Save Settings')) then
+            settings.save();
+            print(chat.header(addon.name):append(chat.message('Settings saved.')));
+        end
+        imgui.SameLine();
+        if (imgui.Button('Update Pricing')) then
+            update_pricing();
+            print(chat.header(addon.name):append(chat.message('Pricing updated.')));
+        end
+        imgui.SameLine();
+        if (imgui.Button('Reload Settings')) then
+            settings.reload();
+            print(chat.header(addon.name):append(chat.message('Settings reloaded.')));
+        end
+        imgui.SameLine();
+        if (imgui.Button('Reset Settings')) then
+            settings.reset();
+            print(chat.header(addon.name):append(chat.message('Settings reset to defaults.')));
+        end
+
+        if (imgui.BeginTabBar('##hgather_tabbar', ImGuiTabBarFlags_NoCloseWithMiddleMouseButton)) then
+            if (imgui.BeginTabItem('General', nil)) then
+                render_general_config(settings);
+                imgui.EndTabItem();
+            end
+            if (imgui.BeginTabItem('Items', nil)) then
+                render_items_config(settings);
+                imgui.EndTabItem();
+            end
+            imgui.EndTabBar();
+        end
+
+    end
+    imgui.End();
 end
 
-function mysplit (inputstr, sep)
+function render_general_config(settings)
+    imgui.Text('General Settings');
+    imgui.BeginChild('settings_general', { 0, 110, }, true);
+        imgui.Checkbox('Visible', hgather.settings.visible);
+        imgui.ShowHelp('Toggles if HGather is visible or not.');
+        imgui.SliderFloat('Opacity', hgather.settings.opacity, 0.125, 1.0, '%.3f');
+        imgui.ShowHelp('The opacity of the HGather window.');
+        imgui.SliderFloat('Font Scale', hgather.settings.font_scale, 0.1, 2.0, '%.3f');
+        imgui.ShowHelp('The scaling of the font size.');
+
+        local pos = { hgather.settings.x[1], hgather.settings.y[1] };
+        if (imgui.InputInt2('Position', pos)) then
+            hgather.settings.x[1] = pos[1];
+            hgather.settings.y[1] = pos[2];
+        end
+        imgui.ShowHelp('The position of HGather on screen.');
+
+    imgui.EndChild();
+    imgui.BeginChild('dig_general', { 0, 250, }, true);
+        imgui.Checkbox('Digging Skillups', hgather.settings.dig_skillups);
+        imgui.ShowHelp('Toggles if digging skillups are shown.');
+        imgui.Checkbox('Moon Display', hgather.settings.moon_display);
+        imgui.ShowHelp('Toggles if moon phase / percent is shown.');
+        imgui.Checkbox('Subtract Greens', hgather.settings.gysahl_subtract);
+        imgui.ShowHelp('Toggles if gysahl greens are automatically subtracted from gil earned.');
+        imgui.InputInt('Display Timeout', hgather.settings.display_timeout);
+        imgui.ShowHelp('How long should the display window stay open after the last dig.');
+    imgui.EndChild();
+end
+
+function render_items_config(settings)
+    imgui.Text('Item Settings');
+    imgui.BeginChild('settings_general', { 0, 480, }, true);
+
+        imgui.InputInt('Gysahl Cost', hgather.settings.gysahl_cost);
+        imgui.ShowHelp('Cost of a single gysahl green.');
+
+        imgui.Separator();
+
+        local temp_strings = T{ };
+        temp_strings[1] = table.concat(hgather.settings.item_index, '\n');
+        if(imgui.InputTextMultiline('\nItem Prices', temp_strings, 8192, {0, 420})) then
+            hgather.settings.item_index = split(temp_strings[1], '\n');
+            table.sort(hgather.settings.item_index);
+        end
+        imgui.ShowHelp('Individual items, lowercase, separated by : with price on right side.');
+    imgui.EndChild();
+end
+
+function split(inputstr, sep)
     if sep == nil then
-        sep = "%s";
+        sep = '%s';
     end
-    local t={};
-    for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+    local t = {};
+    for str in string.gmatch(inputstr, '([^'..sep..']+)') do
         table.insert(t, str);
     end
     return t;
 end
 
-function updatePricing() 
-    -- Grab Pricing
-    local path = ('%saddons\\hgather\\%s.txt'):fmt(AshitaCore:GetInstallPath(), 'itempricing');
-    local file = path;
-    local lines = lines_from(file);
-
-    -- print all line numbers and their contents
-    for k,v in pairs(lines) do
-        for k2, v2 in pairs(mysplit(v, ':')) do
+function update_pricing() 
+    for k, v in pairs(hgather.settings.item_index) do
+        for k2, v2 in pairs(split(v, ':')) do
             if (k2 == 1) then
                 itemname = v2;
             end
@@ -89,38 +198,103 @@ function updatePricing()
     end
 end
 
-function reportSession()
-    totalWorth = 0;
-    accuracy = 0;
-
-    if (hgather.numDigs ~= 0) then
-        accuracy = (hgather.numItems / hgather.numDigs) * 100;
-    end
-
-    print('~~ Digging Session ~~');
-    print("Attempted Digs: " + hgather.numDigs);
-    print('Items Dug: ' + hgather.numItems);
-    print('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%');
-    --Only show skillup line if one was seen during session
-    if (hgather.skillUp ~= 0.0) then
-        print('Skillups: ' + hgather.skillUp);
-    end
-    print('----------');
-
-    for k,v in pairs(hgather.diggingRewards) do
-        itemTotal = 0;
-        if (hgather.pricing[k] ~= nil) then
-            totalWorth = totalWorth + hgather.pricing[k] * v;
-            itemTotal = v * hgather.pricing[k];
+----------------------------------------------------------------------------------------------------
+-- Format numbers with commas
+-- https://stackoverflow.com/questions/10989788/format-integer-in-lua
+----------------------------------------------------------------------------------------------------
+function format_int(number)
+    if (number ~= nil and number ~= '' and type(number) == 'number') then
+        if (string.len(number) < 4) then
+            return number
         end
+        local i, j, minus, int, fraction = tostring(number):find('([-]?)(%d+)([.]?%d*)');
 
-        print(k + ": " + "x" + v + " (" + itemTotal + "g)");
+        -- reverse the int-string and append a comma to all blocks of 3 digits
+        int = int:reverse():gsub("(%d%d%d)", "%1,");
+  
+        -- reverse the int-string back remove an optional comma and put the 
+        -- optional minus and fractional part back
+        return minus .. int:reverse():gsub("^,", "") .. fraction;
+    else
+        return 'NaN';
     end
-
-    print('----------');
-    print("Gil Made: " + totalWorth + 'g');
 end
 
+----------------------------------------------------------------------------------------------------
+-- Format the output used in display window and report
+----------------------------------------------------------------------------------------------------
+function format_output()
+    local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.first_dig / 1000.0);
+
+    local total_worth = 0;
+    local accuracy = 0;
+    local moon_table = GetMoon();
+    local moon_phase = moon_table.MoonPhase;
+    local moon_percent = moon_table.MoonPhasePercent;
+
+    local output_text = '';
+
+    if (hgather.num_digs ~= 0) then
+        accuracy = (hgather.num_items / hgather.num_digs) * 100;
+    end
+        
+    output_text = '~~~~~~ HGather Session ~~~~~~';
+    output_text = output_text .. '\nAttempted Digs: ' .. hgather.num_digs .. ' (' .. string.format('%.2f', hgather.dig_per_minute) .. ' dpm)';
+    output_text = output_text .. '\nGreens Cost: ' .. format_int(hgather.num_digs * hgather.settings.gysahl_cost[1]);
+    output_text = output_text .. '\nItems Dug: ' .. hgather.num_items;
+    output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
+    if (hgather.settings.moon_display[1]) then
+        output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
+    end
+    if (hgather.settings.dig_skillups[1]) then
+        --Only show skillup line if one was seen during session
+        if (hgather.dig_skillup ~= 0.0) then
+            output_text = output_text .. '\nSkillups: ' + hgather.dig_skillup;
+        end
+    end
+
+    -- imgui.Separator();
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+
+    for k,v in pairs(hgather.digging_rewards) do
+        itemTotal = 0;
+        if (hgather.pricing[k] ~= nil) then
+            total_worth = total_worth + hgather.pricing[k] * v;
+            itemTotal = v * hgather.pricing[k];
+        end
+              
+        output_text = output_text .. '\n' .. k .. ': ' .. 'x' .. format_int(v) .. ' (' .. format_int(itemTotal) .. 'g)';
+    end
+
+    -- imgui.Separator();
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+
+
+    if (hgather.settings.gysahl_subtract[1]) then
+        total_worth = total_worth - (hgather.num_digs * hgather.settings.gysahl_cost[1]);
+        -- only update gil_per_hour every 3 seconds
+        if ((ashita.time.clock()['s'] % 3) == 0) then
+            hgather.gil_per_hour = math.floor((total_worth / elapsed_time) * 3600); 
+        end
+        output_text = output_text .. '\nGil Made (minus greens): ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.gil_per_hour) .. ' gph)';
+    else
+        -- only update gil_per_hour every 3 seconds
+        if ((ashita.time.clock()['s'] % 3) == 0) then
+            hgather.gil_per_hour = math.floor((total_worth / elapsed_time) * 3600); 
+        end
+        output_text = output_text .. '\nGil Made: ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.gil_per_hour) .. ' gph)';
+    end
+    return output_text;
+end
+
+function reset_rewards()
+    hgather.digging_rewards = { };
+    hgather.is_attempt = 0;
+    hgather.num_items = 0;
+    hgather.dig_skillup = 0.0;
+    hgather.first_dig = 0;
+    hgather.last_dig = ashita.time.clock()['ms'];
+end
 
 ----------------------------------------------------------------------------------------------------
 -- Helper functions borrowed from luashitacast
@@ -144,64 +318,177 @@ end
 
 function GetMoon()
     local timestamp = GetTimestamp();
-    local moonIndex = ((timestamp.day + 26) % 84) + 1;
-    local moonTable = {};
-    moonTable.MoonPhase = MoonPhase[moonIndex];
-    moonTable.MoonPhasePercent = MoonPhasePercent[moonIndex];
-    return moonTable;
+    local moon_index = ((timestamp.day + 26) % 84) + 1;
+    local moon_table = {};
+    moon_table.MoonPhase = MoonPhase[moon_index];
+    moon_table.MoonPhasePercent = MoonPhasePercent[moon_index];
+    return moon_table;
 end
 
-----------------------------------------------------------------------------------------------------
--- Load Event
-----------------------------------------------------------------------------------------------------
-ashita.events.register('load', 'load_cb', function()
-    updatePricing();
-end)
-
-----------------------------------------------------------------------------------------------------
--- Commands
-----------------------------------------------------------------------------------------------------
-ashita.events.register('text_out', 'text_out_callback1', function (e)
-    if (not e.injected) then
-        if (string.match(e.message, '/hgather reset')) then
-            hgather.diggingRewards = { };
-            hgather.isAttempt = 0;
-            hgather.numItems = 0;
-            hgather.skillUp = 0.0;
-            print('HGather: Digging session has been reset');
-        end
+--[[
+* Prints the addon help information.
+*
+* @param {boolean} isError - Flag if this function was invoked due to an error.
+--]]
+local function print_help(isError)
+    -- Print the help header..
+    if (isError) then
+        print(chat.header(addon.name):append(chat.error('Invalid command syntax for command: ')):append(chat.success('/' .. addon.name)));
+    else
+        print(chat.header(addon.name):append(chat.message('Available commands:')));
     end
 
-    if (not e.injected) then
-        if (string.match(e.message, '/hgather open')) then
-            hgather.open = true;
-            hgather.lastDig = ashita.time.clock()['ms'];
-        end
+    local cmds = T{
+        { '/hgather', 'Toggles the HGather editor.' },
+        { '/hgather edit', 'Toggles the HGather editor.' },
+        { '/hgather save', 'Saves the current settings to disk.' },
+        { '/hgather reload', 'Reloads the current settings from disk.' },
+        { '/hgather report', 'Reports the current session to chat window.' },
+        { '/hgather reset', 'Resets the current settings to defaults.' },
+        { '/hgather show', 'Shows the HGather information.' },
+        { '/hgather hide', 'Hides the HGather information.' },
+    };
+
+    -- Print the command list..
+    cmds:ieach(function (v)
+        print(chat.header(addon.name):append(chat.error('Usage: ')):append(chat.message(v[1]):append(' - ')):append(chat.color1(6, v[2])));
+    end);
+end
+
+--[[
+* Registers a callback for the settings to monitor for character switches.
+--]]
+settings.register('settings', 'settings_update', function (s)
+    if (s ~= nil) then
+        hgather.settings = s;
     end
 
-    if (not e.injected) then
-        if (string.match(e.message, '/hgather close')) then
-            hgather.open = false;
-        end
+    -- Save the current settings..
+    settings.save();
+    update_pricing();
+end);
+
+--[[
+* event: load
+* desc : Event called when the addon is being loaded.
+--]]
+ashita.events.register('load', 'load_cb', function ()
+    update_pricing();
+end);
+
+--[[
+* event: unload
+* desc : Event called when the addon is being unloaded.
+--]]
+ashita.events.register('unload', 'unload_cb', function ()
+    -- Save the current settings..
+    settings.save();
+end);
+
+--[[
+* event: command
+* desc : Event called when the addon is processing a command.
+--]]
+ashita.events.register('command', 'command_cb', function (e)
+    -- Parse the command arguments..
+    local args = e.command:args();
+    if (#args == 0 or not args[1]:any('/hgather')) then
+        return;
     end
 
-    if (not e.injected) then
-        if (string.match(e.message, '/hgather update')) then
-            updatePricing();
-            print('HGather: Pricing has been Updated.');
-        end
+    -- Block all related commands..
+    e.blocked = true;
+
+    -- Handle: /hgather - Toggles the hgather editor.
+    -- Handle: /hgather editor - Toggles the hgather editor.
+    if (#args == 1 or (#args >= 2 and args[2]:any('editor'))) then
+        hgather.editor.is_open[1] = not hgather.editor.is_open[1];
+        return;
     end
 
-    if (not e.injected) then
-        if (string.match(e.message, '/hgather report')) then
-            print('HGather: Reporting current session');
-            reportSession();
-        end
+    -- Handle: /hgather save - Saves the current settings.
+    if (#args >= 2 and args[2]:any('save')) then
+        settings.save();
+        update_pricing();
+        print(chat.header(addon.name):append(chat.message('Settings saved.')));
+        return;
     end
 
-    if (not e.injected) then
-        if (string.match(e.message, '/hgather help')) then
-            print('HGather: Commands are Open, Close, Reset, Update, Report, Help');
+    -- Handle: /hgather reload - Reloads the current settings from disk.
+    if (#args >= 2 and args[2]:any('reload')) then
+        settings.reload();
+        print(chat.header(addon.name):append(chat.message('Settings reloaded.')));
+        return;
+    end
+
+    -- Handle: /hgather report - Reports the current session to the chat window.
+    if (#args >= 2 and args[2]:any('report')) then
+        output_text = format_output();
+        print(output_text);
+        return;
+    end
+
+    -- Handle: /hgather reset - Resets the current settings.
+    if (#args >= 2 and args[2]:any('reset')) then
+        reset_rewards();
+        print(chat.header(addon.name):append(chat.message('Cleared hgather rewards.')));
+        return;
+    end
+
+    -- Handle: /hgather show - Shows the hgather object.
+    if (#args >= 2 and args[2]:any('show')) then
+        -- reset last dig on show command to reset timeout counter
+        hgather.last_dig = ashita.time.clock()['ms'];
+        hgather.settings.visible[1] = true;
+        return;
+    end
+
+    -- Handle: /hgather hide - Hides the hgather object.
+    if (#args >= 2 and args[2]:any('hide')) then
+        hgather.settings.visible[1] = false;
+        return;
+    end
+
+    -- Unhandled: Print help information..
+    print_help(true);
+end);
+
+--[[
+* event: packet_in
+* desc : Event called when the addon is processing incoming packets.
+ashita.events.register('packet_in', 'packet_in_cb', function (e)
+end);
+--]]
+
+--[[
+* event: packet_out
+* desc : Event called when the addon is processing outgoing packets.
+--]]
+ashita.events.register('packet_out', 'packet_out_cb', function (e)
+    if e.id == 0x01A then -- digging
+        if struct.unpack("H", e.data_modified, 0x0A) == 0x1104 then -- digging
+            hgather.is_attempt = true;
+            dig_diff = (ashita.time.clock()['ms'] - hgather.last_dig);
+            hgather.last_dig = ashita.time.clock()['ms'];
+            if (hgather.first_dig == 0) then
+                hgather.first_dig = ashita.time.clock()['ms'];
+            end
+            if (dig_diff > 1000) then
+                -- print('digdiff: ' + dig_diff)
+                hgather.dig_timing[hgather.dig_index] = dig_diff;
+                timing_total = 0;
+                for i=1, #hgather.dig_timing do
+                    timing_total = timing_total + hgather.dig_timing[i];
+                end
+        
+                hgather.dig_per_minute = 60 / ((timing_total / 1000.0) / #hgather.dig_timing);
+    
+                if ( hgather.dig_index >= #hgather.dig_timing ) then
+                    hgather.dig_index = 1;
+                else
+                    hgather.dig_index = hgather.dig_index + 1;
+                end
+            end
         end
     end
 end);
@@ -210,149 +497,169 @@ end);
 -- Parse Digging Items + Main Logic
 ----------------------------------------------------------------------------------------------------
 ashita.events.register('text_in', 'text_in_cb', function (e)
-    local lastDigSecs = (ashita.time.clock()['ms'] - hgather.lastDig) / 1000.0;
+    local last_dig_secs = (ashita.time.clock()['ms'] - hgather.last_dig) / 1000.0;
     message = e.message;
     message = string.lower(message);
     message = string.strip_colors(message);
 
-    success = string.match(message, "obtained: (.*).") or successBreak;
+    success = string.match(message, "obtained: (.*).") or success_break;
     unable = string.contains(message, "you dig and you dig");
-    skillUp = string.match(message, "skill increases by (.*) raising");
+    skill_up = string.match(message, "skill increases by (.*) raising");
 	
-    -- only set isAttempt if we dug within last 60 seconds
-    if ((success or unable) and lastDigSecs < 60) then
-        hgather.isAttempt = true;
+    -- only set is_attempt if we dug within last 60 seconds
+    if ((success or unable) and last_dig_secs < 60) then
+        hgather.is_attempt = true;
+        if (hgather.settings.visible[1] == false) then
+            hgather.settings.visible[1] = true
+        end
     else
-        hgather.isAttempt = false;
+        hgather.is_attempt = false;
     end
    
-    if hgather.isAttempt then 
-        --skillup count
-        if (skillUp) then
-            hgather.skillUp = hgather.skillUp + skillUp;
-        end
+    --skillup count
+    if (skill_up) then
+        hgather.dig_skillup = hgather.dig_skillup + skill_up;
+    end
 
-        successBreak = false;
-        success = string.match(message, "obtained: (.*).") or successBreak;
+    if hgather.is_attempt then 
+        success_break = false;
+        success = string.match(message, "obtained: (.*).") or success_break;
         unable = string.contains(message, "you dig and you dig");
         broken = false;
         lost = false;
 
-        --keep window open
-        if (unable or success) then
-            hgather.open = true;
-        end
-
         --count attempt
         if (unable) then 
-            hgather.numDigs = hgather.numDigs + 1;
+            hgather.num_digs = hgather.num_digs + 1;
         end
         
         if success then
-            --local of = string.match(success, "of (.*)");
-            --if of then success = of; txt = of end;
-            hgather.numItems = hgather.numItems + 1;
-            hgather.numDigs = hgather.numDigs + 1;
+            hgather.num_items = hgather.num_items + 1;
+            hgather.num_digs = hgather.num_digs + 1;
 
             if (success ~= nil) then
-                if (hgather.diggingRewards[success] == nil) then
-                    hgather.diggingRewards[success] = 1;
-                elseif (hgather.diggingRewards[success] ~= nil) then
-                    hgather.diggingRewards[success] = hgather.diggingRewards[success] + 1;
+                if (hgather.digging_rewards[success] == nil) then
+                    hgather.digging_rewards[success] = 1;
+                elseif (hgather.digging_rewards[success] ~= nil) then
+                    hgather.digging_rewards[success] = hgather.digging_rewards[success] + 1;
                 end
+                -- sorting this table does nothing because we access it via pairs();
+                -- table.sort(hgather.digging_rewards);
             end
         end
     end
-end)
+end);
 
-----------------------------------------------------------------------------------------------------
--- Digging Event
-----------------------------------------------------------------------------------------------------
-ashita.events.register('packet_out', 'packet_out_callback1', function (e)
-    if e.id == 0x01A then -- digging
-        if struct.unpack("H", e.data_modified, 0x0A) == 0x1104 then -- digging
-            hgather.isAttempt = true;
-            digDiff = (ashita.time.clock()['ms'] - hgather.lastDig);
-            hgather.lastDig = ashita.time.clock()['ms'];
-            if (hgather.firstDig == 0) then
-                hgather.firstDig = ashita.time.clock()['ms'];
-            end
-            if (digDiff > 1000) then
-                -- print('digdiff: ' + digDiff)
-                hgather.digTiming[hgather.digIndex] = digDiff;
-                timingTotal = 0;
-                for i=1, #hgather.digTiming do
-                    timingTotal = timingTotal + hgather.digTiming[i];
-                end
-        
-                hgather.digPerMinute = 60 / ((timingTotal / 1000.0) / #hgather.digTiming);
-    
-                if ( hgather.digIndex >= #hgather.digTiming ) then
-                    hgather.digIndex = 1;
-                else
-                    hgather.digIndex = hgather.digIndex + 1;
-                end
-            end
-        end
+--[[
+* event: d3d_beginscene
+* desc : Event called when the Direct3D device is beginning a scene.
+--]]
+ashita.events.register('d3d_beginscene', 'beginscene_cb', function (isRenderingBackBuffer)
+end);
+
+--[[
+* event: d3d_present
+* desc : Event called when the Direct3D device is presenting a scene.
+--]]
+ashita.events.register('d3d_present', 'present_cb', function ()
+    local last_dig_secs = (ashita.time.clock()['ms'] - hgather.last_dig) / 1000.0;
+    render_editor();
+
+    if (last_dig_secs > hgather.settings.display_timeout[1]) then
+        hgather.settings.visible[1] = false;
     end
-end)
 
-----------------------------------------------------------------------------------------------------
--- GUI
-----------------------------------------------------------------------------------------------------
-ashita.events.register('d3d_present', 'present_cb', function () 
-    local digDiff = ashita.time.clock()['ms'] - hgather.lastDig;
-    local elapsedTime = ashita.time.clock()['ms'] - hgather.firstDig;
-    if (hgather.open == false) then
+    -- Hide the hgather object if not visible..
+    if (not hgather.settings.visible[1]) then
         return;
     end
 
-    imgui.SetNextWindowBgAlpha(0.8);
-    imgui.SetNextWindowSize({ 250, -1, }, ImGuiCond_Always);
+    -- Hide the hgather object if Ashita is currently hiding font objects..
+    if (not AshitaCore:GetFontManager():GetVisible()) then
+        return;
+    end
 
-    if (imgui.Begin('HasteGather', hgather.open, bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoSavedSettings, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
-        local totalWorth = 0;
-        local accuracy = 0;
-        local moonTable = GetMoon();
-        local moonPhase = moonTable.MoonPhase;
-        local moonPercent = moonTable.MoonPhasePercent;
+    imgui.SetNextWindowBgAlpha(hgather.settings.opacity[1]);
+    imgui.SetNextWindowSize({ -1, -1, }, ImGuiCond_Always);
+    if (imgui.Begin('HGather##Display', hgather.settings.visible[1], bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
+        imgui.SetWindowFontScale(hgather.settings.font_scale[1]);
+        output_text = format_output();
+        imgui.Text(output_text);
+    end
+    imgui.End();
 
-        if (hgather.numDigs ~= 0) then
-            accuracy = (hgather.numItems / hgather.numDigs) * 100;
-        end
-        
-        imgui.Text('~~ Digging Session ~~');
-        imgui.Text('Attempted Digs: ' + hgather.numDigs + ' (' + string.format('%.2f', hgather.digPerMinute) + ' dpm)');
-        imgui.Text('Greens Cost: ' + hgather.numDigs * 62);
-        imgui.Text('Items Dug: ' + hgather.numItems);
-        imgui.Text('Dig Accuracy: ' + string.format('%.2f', accuracy) + '%%');
-        imgui.Text('Moon: ' + moonPhase + ' ('+ moonPercent + '%%)');
-        --Only show skillup line if one was seen during session
-        if (hgather.skillUp ~= 0.0) then
-            imgui.Text('Skillups: ' + hgather.skillUp);
-        end
-        imgui.Separator();
+end);
 
-        for k,v in pairs(hgather.diggingRewards) do
-            itemTotal = 0;
-            if (hgather.pricing[k] ~= nil) then
-                totalWorth = totalWorth + hgather.pricing[k] * v;
-                itemTotal = v * hgather.pricing[k];
+--[[
+* event: key
+* desc : Event called when the addon is processing keyboard input. (WNDPROC)
+--]]
+ashita.events.register('key', 'key_callback', function (e)
+    -- Key: VK_SHIFT
+    if (e.wparam == 0x10) then
+        hgather.move.shift_down = not (bit.band(e.lparam, bit.lshift(0x8000, 0x10)) == bit.lshift(0x8000, 0x10));
+        return;
+    end
+end);
+
+--[[
+* event: mouse
+* desc : Event called when the addon is processing mouse input. (WNDPROC)
+--]]
+ashita.events.register('mouse', 'mouse_cb', function (e)
+    -- Tests if the given coords are within the equipmon area.
+    local function hit_test(x, y)
+        local e_x = hgather.settings.x[1];
+        local e_y = hgather.settings.y[1];
+        local e_w = ((32 * hgather.settings.scale[1]) * 4) + hgather.settings.padding[1] * 3;
+        local e_h = ((32 * hgather.settings.scale[1]) * 4) + hgather.settings.padding[1] * 3;
+
+        return ((e_x <= x) and (e_x + e_w) >= x) and ((e_y <= y) and (e_y + e_h) >= y);
+    end
+
+    -- Returns if the equipmon object is being dragged.
+    local function is_dragging() return hgather.move.dragging; end
+
+    -- Handle the various mouse messages..
+    switch(e.message, {
+        -- Event: Mouse Move
+        [512] = (function ()
+            hgather.settings.x[1] = e.x - hgather.move.drag_x;
+            hgather.settings.y[1] = e.y - hgather.move.drag_y;
+
+            e.blocked = true;
+        end):cond(is_dragging),
+
+        -- Event: Mouse Left Button Down
+        [513] = (function ()
+            if (hgather.move.shift_down) then
+                hgather.move.dragging = true;
+                hgather.move.drag_x = e.x - hgather.settings.x[1];
+                hgather.move.drag_y = e.y - hgather.settings.y[1];
+
+                e.blocked = true;
             end
-                
-            imgui.Text(k + ": " + "x" + v + " (" + itemTotal + "g)");
-        end
+        end):cond(hit_test:bindn(e.x, e.y)),
 
-        imgui.Separator();
-        gilHour = math.floor((totalWorth / (elapsedTime / 1000.0)) * 3600); 
-        imgui.Text("Gil Made: " + totalWorth + "g" + " (" + gilHour + " gph)");
+        -- Event: Mouse Left Button Up
+        [514] = (function ()
+            if (hgather.move.dragging) then
+                hgather.move.dragging = false;
 
-        --List things gotten for digging session
-    end
+                e.blocked = true;
+            end
+        end):cond(is_dragging),
 
-    --end session
-    if ((digDiff / 1000.0) > 300) then
-        imgui.End();
-        hgather.open = false;
-    end
-end)
+        -- Event: Mouse Wheel Scroll
+        [522] = (function ()
+            if (e.delta < 0) then
+                hgather.settings.opacity[1] = hgather.settings.opacity[1] - 0.125;
+            else
+                hgather.settings.opacity[1] = hgather.settings.opacity[1] + 0.125;
+            end
+            hgather.settings.opacity[1] = hgather.settings.opacity[1]:clamp(0.125, 1);
+
+            e.blocked = true;
+        end):cond(hit_test:bindn(e.x, e.y)),
+    });
+end);
