@@ -13,7 +13,7 @@ This is a simple dig tracker for FFXI. This addon works with Ashita v4.
 
 /hgather report - Prints the dig data to chatlog
 
-/hgather reset - Resets the digging data
+/hgather clear - Clears the digging session data
 
 ## Pricing
 Pricing for items is listed under the configuration window under the Items tab. Make sure the format is as follows:
