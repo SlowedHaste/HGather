@@ -46,12 +46,27 @@ local default_settings = T{
         gysahl_subtract = T{ false, },
         skillup_display = T{ true, },
     },
+    mining = T {
+        pickaxe_cost = T{ 120 },
+        pickaxe_subtract = T{ false },
+    },
     reset_on_load = T{ false },
     first_attempt = 0,
-    rewards = T{ },
+
     -- Save dig items/tries across sessions for fatigue tracking
+    dig_rewards = T{ },
     dig_items = 0,
     dig_tries = 0,
+    -- mining rewards
+    mine_rewards = T{ },
+    mine_items = 0,
+    mine_tries = 0,
+    mine_break = 0,
+    -- mining rewards
+    exca_rewards = T{ },
+    exca_items = 0,
+    exca_tries = 0,
+    exca_break = 0,
 };
 
 -- HGather Variables
@@ -71,18 +86,24 @@ local hgather = T{
         is_open = T{ false, },
     },
 
-    is_attempt = false,
-    last_attempt = ashita.time.clock()['ms'],
-    -- digging_rewards = { },
+    last_attempt = 0,
+    attempt_type = '',
+
     pricing = T{ },
-    gil_per_hour = 0,
 
     digging = T{
         dig_timing = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
         dig_index = 1,
         dig_per_minute = 0,
         dig_skillup = 0.0,
+        dig_gph = 0,
     },
+    mining = T{
+        mine_gph = 0,
+    },
+    excavate = T{
+        exca_gph = 0,
+    }
 };
 
 --[[
@@ -142,7 +163,7 @@ end
 
 function render_general_config(settings)
     imgui.Text('General Settings');
-    imgui.BeginChild('settings_general', { 0, 250, }, true);
+    imgui.BeginChild('settings_general', { 0, 200, }, true);
         if( imgui.Checkbox('Visible', hgather.settings.visible) ) then
             -- if the checkbox is interacted with, reset the last_attempt
             -- to force the window back open
@@ -169,11 +190,16 @@ function render_general_config(settings)
         imgui.ShowHelp('Toggles whether we reset rewards each time the addon is loaded.');
     imgui.EndChild();
     imgui.Text('Chocobo Digging Display Settings');
-    imgui.BeginChild('dig_general', { 0, 110, }, true);
+    imgui.BeginChild('dig_general', { 0, 75, }, true);
         imgui.Checkbox('Digging Skillups', hgather.settings.digging.skillup_display);
         imgui.ShowHelp('Toggles if digging skillups are shown.');
         imgui.Checkbox('Subtract Greens', hgather.settings.digging.gysahl_subtract);
         imgui.ShowHelp('Toggles if gysahl greens are automatically subtracted from gil earned.');
+    imgui.EndChild();
+    imgui.Text('Mining Display Settings');
+    imgui.BeginChild('mine_general', { 0, 50, }, true);
+        imgui.Checkbox('Subtract Pickaxes', hgather.settings.mining.pickaxe_subtract);
+        imgui.ShowHelp('Toggles if pickaxe breaks are automatically subtracted from gil earned.');
     imgui.EndChild();
 end
 
@@ -183,12 +209,14 @@ function render_items_config(settings)
 
         imgui.InputInt('Gysahl Cost', hgather.settings.digging.gysahl_cost);
         imgui.ShowHelp('Cost of a single gysahl green.');
+        imgui.InputInt('Pickaxe Cost', hgather.settings.mining.pickaxe_cost);
+        imgui.ShowHelp('Cost of a single pickaxe.');
 
         imgui.Separator();
 
         local temp_strings = T{ };
         temp_strings[1] = table.concat(hgather.settings.item_index, '\n');
-        if(imgui.InputTextMultiline('\nItem Prices', temp_strings, 8192, {0, 420})) then
+        if(imgui.InputTextMultiline('\nItem Prices', temp_strings, 8192, {0, 410})) then
             hgather.settings.item_index = split(temp_strings[1], '\n');
             table.sort(hgather.settings.item_index);
         end
@@ -252,7 +280,7 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Format the output used in display window and report
 ----------------------------------------------------------------------------------------------------
-function format_output()
+function format_dig_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -267,7 +295,7 @@ function format_output()
         accuracy = (hgather.settings.dig_items / hgather.settings.dig_tries) * 100;
     end
         
-    output_text = '~~~~~~ HGather Session ~~~~~~';
+    output_text = '~~~~~~ HGather Digging Session ~~~~~~';
     output_text = output_text .. '\nAttempted Digs: ' .. hgather.settings.dig_tries .. ' (' .. string.format('%.2f', hgather.digging.dig_per_minute) .. ' dpm)';
     output_text = output_text .. '\nGreens Cost: ' .. format_int(hgather.settings.dig_tries * hgather.settings.digging.gysahl_cost[1]);
     output_text = output_text .. '\nItems Dug: ' .. hgather.settings.dig_items;
@@ -276,16 +304,13 @@ function format_output()
         output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
     end
     if (hgather.settings.digging.skillup_display[1]) then
-        --Only show skillup line if one was seen during session
-        if (hgather.digging.dig_skillup ~= 0.0) then
-            output_text = output_text .. '\nSkillups: ' + hgather.digging.dig_skillup;
-        end
+        output_text = output_text .. '\nSkillups: ' + hgather.digging.dig_skillup;
     end
 
     -- imgui.Separator();
-    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
 
-    for k,v in pairs(hgather.settings.rewards) do
+    for k,v in pairs(hgather.settings.dig_rewards) do
         itemTotal = 0;
         if (hgather.pricing[k] ~= nil) then
             total_worth = total_worth + hgather.pricing[k] * v;
@@ -296,34 +321,180 @@ function format_output()
     end
 
     -- imgui.Separator();
-    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
 
 
     if (hgather.settings.digging.gysahl_subtract[1]) then
-        total_worth = total_worth - (hgather.settings.dig_tries * hgather.settings.gysahl_cost[1]);
+        total_worth = total_worth - (hgather.settings.dig_tries * hgather.settings.digging.gysahl_cost[1]);
         -- only update gil_per_hour every 3 seconds
         if ((ashita.time.clock()['s'] % 3) == 0) then
-            hgather.gil_per_hour = math.floor((total_worth / elapsed_time) * 3600); 
+            hgather.digging.dig_gph = math.floor((total_worth / elapsed_time) * 3600); 
         end
-        output_text = output_text .. '\nGil Made (minus greens): ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.gil_per_hour) .. ' gph)';
+        output_text = output_text .. '\nGil Made (minus greens): ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.digging.dig_gph) .. ' gph)';
     else
         -- only update gil_per_hour every 3 seconds
         if ((ashita.time.clock()['s'] % 3) == 0) then
-            hgather.gil_per_hour = math.floor((total_worth / elapsed_time) * 3600); 
+            hgather.digging.dig_gph = math.floor((total_worth / elapsed_time) * 3600); 
         end
-        output_text = output_text .. '\nGil Made: ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.gil_per_hour) .. ' gph)';
+        output_text = output_text .. '\nGil Made: ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.digging.dig_gph) .. ' gph)';
     end
     return output_text;
 end
 
-function clear_rewards()
-    hgather.is_attempt = 0;
+function format_mine_output()
+    local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
+
+    local total_worth = 0;
+    local accuracy = 0;
+    local moon_table = GetMoon();
+    local moon_phase = moon_table.MoonPhase;
+    local moon_percent = moon_table.MoonPhasePercent;
+
+    local output_text = '';
+
+    if (hgather.settings.mine_tries ~= 0) then
+        accuracy = (hgather.settings.mine_items / hgather.settings.mine_tries) * 100;
+    end
+        
+    output_text = '~~~~~~ HGather Mining Session ~~~~~~~';
+    output_text = output_text .. '\nPickaxe Swings: ' .. hgather.settings.mine_tries;
+    output_text = output_text .. '\nPickaxe Cost: ' .. format_int(hgather.settings.mine_break * hgather.settings.mining.pickaxe_cost[1]);
+    output_text = output_text .. '\nItems Mined: ' .. hgather.settings.mine_items;
+    output_text = output_text .. '\nSwing Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
+    if (hgather.settings.moon_display[1]) then
+        output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
+    end
+
+    -- imgui.Separator();
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+
+    for k,v in pairs(hgather.settings.mine_rewards) do
+        itemTotal = 0;
+        if (hgather.pricing[k] ~= nil) then
+            total_worth = total_worth + hgather.pricing[k] * v;
+            itemTotal = v * hgather.pricing[k];
+        end
+              
+        output_text = output_text .. '\n' .. k .. ': ' .. 'x' .. format_int(v) .. ' (' .. format_int(itemTotal) .. 'g)';
+    end
+
+    -- imgui.Separator();
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+    if (hgather.settings.mining.pickaxe_subtract[1]) then
+        total_worth = total_worth - (hgather.settings.mine_break * hgather.settings.mining.pickaxe_cost[1]);
+        -- only update gil_per_hour every 3 seconds
+        if ((ashita.time.clock()['s'] % 3) == 0) then
+            hgather.mining.mine_gph = math.floor((total_worth / elapsed_time) * 3600); 
+        end
+        output_text = output_text .. '\nGil Made (minus pickaxes): ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.mining.mine_gph) .. ' gph)';
+    else
+        -- only update gil_per_hour every 3 seconds
+        if ((ashita.time.clock()['s'] % 3) == 0) then
+            hgather.mining.mine_gph = math.floor((total_worth / elapsed_time) * 3600); 
+        end
+        output_text = output_text .. '\nGil Made: ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.mining.mine_gph) .. ' gph)';
+    end
+
+    return output_text;
+end
+
+function format_exca_output()
+    local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
+
+    local total_worth = 0;
+    local accuracy = 0;
+    local moon_table = GetMoon();
+    local moon_phase = moon_table.MoonPhase;
+    local moon_percent = moon_table.MoonPhasePercent;
+
+    local output_text = '';
+
+    if (hgather.settings.exca_tries ~= 0) then
+        accuracy = (hgather.settings.exca_items / hgather.settings.exca_tries) * 100;
+    end
+        
+    output_text = '~~~~~~ HGather Excavate Session ~~~~~';
+    output_text = output_text .. '\nPickaxe Swings: ' .. hgather.settings.exca_tries;
+    output_text = output_text .. '\nPickaxe Cost: ' .. format_int(hgather.settings.exca_break * hgather.settings.mining.pickaxe_cost[1]);
+    output_text = output_text .. '\nItems Excavated: ' .. hgather.settings.exca_items;
+    output_text = output_text .. '\nSwing Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
+    if (hgather.settings.moon_display[1]) then
+        output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
+    end
+
+    -- imgui.Separator();
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+
+    for k,v in pairs(hgather.settings.exca_rewards) do
+        itemTotal = 0;
+        if (hgather.pricing[k] ~= nil) then
+            total_worth = total_worth + hgather.pricing[k] * v;
+            itemTotal = v * hgather.pricing[k];
+        end
+              
+        output_text = output_text .. '\n' .. k .. ': ' .. 'x' .. format_int(v) .. ' (' .. format_int(itemTotal) .. 'g)';
+    end
+
+    -- imgui.Separator();
+    output_text = output_text .. '\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~';
+    if (hgather.settings.mining.pickaxe_subtract[1]) then
+        total_worth = total_worth - (hgather.settings.exca_break * hgather.settings.mining.pickaxe_cost[1]);
+        -- only update gil_per_hour every 3 seconds
+        if ((ashita.time.clock()['s'] % 3) == 0) then
+            hgather.excavate.exca_gph = math.floor((total_worth / elapsed_time) * 3600); 
+        end
+        output_text = output_text .. '\nGil Made (minus pickaxes): ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.excavate.exca_gph) .. ' gph)';
+    else
+        -- only update gil_per_hour every 3 seconds
+        if ((ashita.time.clock()['s'] % 3) == 0) then
+            hgather.excavate.exca_gph = math.floor((total_worth / elapsed_time) * 3600); 
+        end
+        output_text = output_text .. '\nGil Made: ' .. format_int(total_worth) .. 'g' .. ' (' .. format_int(hgather.excavate.exca_gph) .. ' gph)';
+    end
+
+    return output_text;
+end
+
+function clear_rewards(args)
     hgather.last_attempt = ashita.time.clock()['ms'];
     hgather.settings.first_attempt = 0;
-    hgather.settings.rewards = { };
-    hgather.settings.dig_items = 0;
-    hgather.settings.dig_tries = 0;
-    hgather.digging.dig_skillup = 0.0;
+
+    if (#args == 2) then
+        -- digging
+        hgather.settings.dig_rewards = { };
+        hgather.settings.dig_items = 0;
+        hgather.settings.dig_tries = 0;
+        hgather.digging.dig_skillup = 0.0;
+        -- mining
+        hgather.settings.mine_rewards = { };
+        hgather.settings.mine_break = 0;
+        hgather.settings.mine_items = 0;
+        hgather.settings.mine_tries = 0;
+        -- excavating
+        hgather.settings.exca_rewards = { };
+        hgather.settings.exca_break = 0;
+        hgather.settings.exca_items = 0;
+        hgather.settings.exca_tries = 0;
+    elseif (#args == 3) then
+        if (args[3]:any('dig')) then
+            hgather.settings.dig_rewards = { };
+            hgather.settings.dig_items = 0;
+            hgather.settings.dig_tries = 0;
+            hgather.digging.dig_skillup = 0.0;
+        elseif (args[3]:any('mine')) then
+            -- mining
+            hgather.settings.mine_rewards = { };
+            hgather.settings.mine_break = 0;
+            hgather.settings.mine_items = 0;
+            hgather.settings.mine_tries = 0;
+        elseif (args[3]:any('exca')) then
+            -- excavating
+            hgather.settings.exca_rewards = { };
+            hgather.settings.exca_break = 0;
+            hgather.settings.exca_items = 0;
+            hgather.settings.exca_tries = 0;
+        end
+    end
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -356,6 +527,107 @@ function GetMoon()
 end
 
 --[[
+    * Get target helper
+    * partially from hxui/helpers.lua
+]]--
+
+local function get_target()
+    local player_target = AshitaCore:GetMemoryManager():GetTarget();
+
+    if (player_target == nil) then
+        return nil;
+    end
+
+    local main_target = player_target:GetTargetIndex(0);
+    return main_target;
+end
+
+--[[
+    * Functions for handling successful/unsuccesful gathering attempts
+    *
+    * @param {string} dig_success - Item returned from a successful dig
+]]
+local function handle_dig(dig_success)
+    -- force display to show if it is hidden after an attempt
+    if (hgather.settings.visible[1] == false) then
+        hgather.settings.visible[1] = true
+    end
+
+    -- count attempt
+    hgather.settings.dig_tries = hgather.settings.dig_tries + 1;
+
+    -- increment item count and add to rewards list
+    if dig_success then
+        hgather.settings.dig_items = hgather.settings.dig_items + 1;
+
+        if (dig_success ~= nil) then
+            if (hgather.settings.dig_rewards[dig_success] == nil) then
+                hgather.settings.dig_rewards[dig_success] = 1;
+            elseif (hgather.settings.dig_rewards[dig_success] ~= nil) then
+                hgather.settings.dig_rewards[dig_success] = hgather.settings.dig_rewards[dig_success] + 1;
+            end
+        end
+    end
+end
+
+
+--[[
+    * Functions for handling successful/unsuccesful gathering attempts
+    *
+    * @param {string} mine_success - Item returned from successful mining
+]]
+local function handle_mine(mine_success)
+    -- force display to show if it is hidden after an attempt
+    if (hgather.settings.visible[1] == false) then
+        hgather.settings.visible[1] = true
+    end
+
+    -- count attempt
+    hgather.settings.mine_tries = hgather.settings.mine_tries + 1;
+
+    -- increment item count and add to rewards list
+    if mine_success then
+        hgather.settings.mine_items = hgather.settings.mine_items + 1;
+
+        if (mine_success ~= nil) then
+            if (hgather.settings.mine_rewards[mine_success] == nil) then
+                hgather.settings.mine_rewards[mine_success] = 1;
+            elseif (hgather.settings.mine_rewards[mine_success] ~= nil) then
+                hgather.settings.mine_rewards[mine_success] = hgather.settings.mine_rewards[mine_success] + 1;
+            end
+        end
+    end
+end
+
+--[[
+    * Functions for handling successful/unsuccesful gathering attempts
+    *
+    * @param {string} mine_success - Item returned from successful mining
+]]
+local function handle_exca(exca_success)
+    -- force display to show if it is hidden after an attempt
+    if (hgather.settings.visible[1] == false) then
+        hgather.settings.visible[1] = true
+    end
+
+    -- count attempt
+    hgather.settings.exca_tries = hgather.settings.exca_tries + 1;
+
+    -- increment item count and add to rewards list
+    if exca_success then
+        hgather.settings.exca_items = hgather.settings.exca_items + 1;
+
+        if (exca_success ~= nil) then
+            if (hgather.settings.exca_rewards[exca_success] == nil) then
+                hgather.settings.exca_rewards[exca_success] = 1;
+            elseif (hgather.settings.exca_rewards[exca_success] ~= nil) then
+                hgather.settings.exca_rewards[exca_success] = hgather.settings.exca_rewards[exca_success] + 1;
+            end
+        end
+    end
+end
+
+--[[
 * Prints the addon help information.
 *
 * @param {boolean} isError - Flag if this function was invoked due to an error.
@@ -374,7 +646,7 @@ local function print_help(isError)
         { '/hgather save', 'Saves the current settings to disk.' },
         { '/hgather reload', 'Reloads the current settings from disk.' },
         { '/hgather report', 'Reports the current session to chat window.' },
-        { '/hgather clear', 'Clears the HGather session stats.' },
+        { '/hgather clear', 'Clears the HGather session stats (all: default | dig | mine | exca).' },
         { '/hgather show', 'Shows the HGather information.' },
         { '/hgather hide', 'Hides the HGather information.' },
     };
@@ -457,14 +729,14 @@ ashita.events.register('command', 'command_cb', function (e)
 
     -- Handle: /hgather report - Reports the current session to the chat window.
     if (#args >= 2 and args[2]:any('report')) then
-        output_text = format_output();
+        output_text = format_dig_output();
         print(output_text);
         return;
     end
 
     -- Handle: /hgather clear - Clears the current rewards.
     if (#args >= 2 and args[2]:any('clear')) then
-        clear_rewards();
+        clear_rewards(args);
         print(chat.header(addon.name):append(chat.message('Cleared hgather rewards.')));
         return;
     end
@@ -499,16 +771,16 @@ end);
 * desc : Event called when the addon is processing outgoing packets.
 --]]
 ashita.events.register('packet_out', 'packet_out_cb', function (e)
-    if e.id == 0x01A then -- digging
-        if struct.unpack("H", e.data_modified, 0x0A) == 0x1104 then -- digging
-            hgather.is_attempt = true;
+    if e.id == 0x01A then -- digging / clamming
+        if struct.unpack('H', e.data_modified, 0x0A) == 0x1104 then -- digging
+            hgather.attempt_type = 'digging';
             dig_diff = (ashita.time.clock()['ms'] - hgather.last_attempt);
             hgather.last_attempt = ashita.time.clock()['ms'];
             if (hgather.settings.first_attempt == 0) then
                 hgather.settings.first_attempt = ashita.time.clock()['ms'];
             end
-            if (dig_diff > 1000) then
-                -- print('digdiff: ' + dig_diff)
+            -- dig timing calculation
+            if (dig_diff > 1500) then
                 hgather.digging.dig_timing[hgather.digging.dig_index] = dig_diff;
                 timing_total = 0;
                 for i=1, #hgather.digging.dig_timing do
@@ -524,6 +796,22 @@ ashita.events.register('packet_out', 'packet_out_cb', function (e)
                 end
             end
         end
+    elseif e.id == 0x36 then -- helm
+        local target = GetEntity(AshitaCore:GetMemoryManager():GetTarget():GetTargetIndex(0));
+        -- Mining
+        if (target ~= nil and target.Name ~= nil and target.Name == 'Mining Point') then
+            hgather.attempt_type = 'mining';
+            hgather.last_attempt = ashita.time.clock()['ms'];
+            if (hgather.settings.first_attempt == 0) then
+                hgather.settings.first_attempt = ashita.time.clock()['ms'];
+            end
+        elseif (target ~= nil and target.Name ~= nil and target.Name == 'Excavation Point') then
+            hgather.attempt_type = 'excavate';
+            hgather.last_attempt = ashita.time.clock()['ms'];
+            if (hgather.settings.first_attempt == 0) then
+                hgather.settings.first_attempt = ashita.time.clock()['ms'];
+            end
+        end
     end
 end);
 
@@ -536,51 +824,71 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
     message = string.lower(message);
     message = string.strip_colors(message);
 
-    success = string.match(message, "obtained: (.*).") or success_break;
-    unable = string.contains(message, "you dig and you dig");
-    skill_up = string.match(message, "skill increases by (.*) raising");
-	
-    -- only set is_attempt if we dug within last 60 seconds
-    if ((success or unable) and last_attempt_secs < 60) then
-        hgather.is_attempt = true;
-        if (hgather.settings.visible[1] == false) then
-            hgather.settings.visible[1] = true
-        end
-    else
-        hgather.is_attempt = false;
-    end
-   
-    --skillup count
-    if (skill_up) then
-        hgather.digging.dig_skillup = hgather.digging.dig_skillup + skill_up;
+    -- check for dig skillups
+    dig_skill_up = string.match(message, 'skill increases by (.*) raising');
+    if (dig_skill_up and last_attempt_secs < 60) then
+        hgather.digging.dig_skillup = hgather.digging.dig_skillup + dig_skill_up;
     end
 
-    if hgather.is_attempt then 
-        success_break = false;
-        success = string.match(message, "obtained: (.*).") or success_break;
-        unable = string.contains(message, "you dig and you dig");
-        broken = false;
-        lost = false;
+    if (hgather.attempt_type == 'digging' and last_attempt_secs < 60) then
+        -- digging text to monitor
+        dig_success = string.match(message, 'obtained: (.*).');
+        dig_unable = string.contains(message, 'you dig and you dig');
+        -- digging logic
+        if (dig_success or dig_unable) then
+            --skillup count
 
-        --count attempt
-        if (unable) then 
-            hgather.settings.dig_tries = hgather.settings.dig_tries + 1;
+            handle_dig(dig_success);
         end
-        
-        if success then
-            hgather.settings.dig_items = hgather.settings.dig_items + 1;
-            hgather.settings.dig_tries = hgather.settings.dig_tries + 1;
-
-            if (success ~= nil) then
-                if (hgather.settings.rewards[success] == nil) then
-                    hgather.settings.rewards[success] = 1;
-                elseif (hgather.settings.rewards[success] ~= nil) then
-                    hgather.settings.rewards[success] = hgather.settings.rewards[success] + 1;
-                end
-                -- sorting this table does nothing because we access it via pairs();
-                -- table.sort(hgather.digging_rewards);
+        hgather.attempt_type = '';
+    elseif (hgather.attempt_type == 'mining' and last_attempt_secs < 60) then
+        --[[
+            mining text to monitor
+        'You dig up a chunk of iron ore, but your pickaxe breaks in the process.';
+        'You successfully dig up a chunk of tin ore!';
+        'You are unable to mine anything.';
+        'Your pickaxe breaks!';
+         ]]--
+        mine_success = string.match(message, 'dig up a ([^,!]+)');
+        mine_break = string.match(message, 'our pickaxe breaks');
+        mine_unable = string.match(message, 'unable to mine anything.');
+        -- excavating to monitor
+        -- harvesting to monitor
+        -- logging to monitor
+	    
+        -- mining logic
+        if (mine_success or mine_break or mine_unable) then
+            if (mine_break) then
+                hgather.settings.mine_break = hgather.settings.mine_break + 1;
             end
+    
+            handle_mine(mine_success);
         end
+        hgather.attempt_type = '';
+    elseif (hgather.attempt_type == 'excavate' and last_attempt_secs < 60) then
+        --[[
+            mining text to monitor
+        'You dig up a chunk of iron ore, but your pickaxe breaks in the process.';
+        'You successfully dig up a chunk of tin ore!';
+        'You are unable to mine anything.';
+        'Your pickaxe breaks!';
+         ]]--
+        -- excavating to monitor
+        exca_success = string.match(message, 'dig up a ([^,!]+)');
+        exca_break = string.match(message, 'our pickaxe breaks');
+        exca_unable = string.match(message, 'unable to mine anything.');
+        -- harvesting to monitor
+        -- logging to monitor
+	    
+        -- mining logic
+        if (exca_success or exca_break or exca_unable) then
+            if (exca_break) then
+                hgather.settings.exca_break = hgather.settings.exca_break + 1;
+            end
+    
+            handle_exca(exca_success);
+        end
+        hgather.attempt_type = '';
     end
 end);
 
@@ -617,8 +925,21 @@ ashita.events.register('d3d_present', 'present_cb', function ()
     imgui.SetNextWindowSize({ -1, -1, }, ImGuiCond_Always);
     if (imgui.Begin('HGather##Display', hgather.settings.visible[1], bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
         imgui.SetWindowFontScale(hgather.settings.font_scale[1]);
-        output_text = format_output();
-        imgui.Text(output_text);
+        if (imgui.BeginTabBar('##hgather_helmtabbar', ImGuiTabBarFlags_NoCloseWithMiddleMouseButton)) then
+            if (imgui.BeginTabItem('Dig', nil)) then
+                imgui.Text(format_dig_output());
+                imgui.EndTabItem();
+            end
+            if (imgui.BeginTabItem('Mine', nil)) then
+                imgui.Text(format_mine_output());
+                imgui.EndTabItem();
+            end
+            if (imgui.BeginTabItem('Exca', nil)) then
+                imgui.Text(format_exca_output());
+                imgui.EndTabItem();
+            end
+            imgui.EndTabBar();
+        end
     end
     imgui.End();
 
