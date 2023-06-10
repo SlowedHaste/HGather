@@ -164,11 +164,10 @@ end
 function render_general_config(settings)
     imgui.Text('General Settings');
     imgui.BeginChild('settings_general', { 0, 180, }, true);
-        if( imgui.Checkbox('Visible', hgather.settings.visible) ) then
+        if ( imgui.Checkbox('Visible', hgather.settings.visible) ) then
             -- if the checkbox is interacted with, reset the last_attempt
             -- to force the window back open
-            hgather.settings.visible[1] = true;
-            hgather.last_attempt = ashita.time.clock()['ms'];
+            hgather.last_attempt = 0;
         end
         imgui.ShowHelp('Toggles if HGather is visible or not.');
         imgui.SliderFloat('Opacity', hgather.settings.opacity, 0.125, 1.0, '%.3f');
@@ -745,7 +744,7 @@ ashita.events.register('command', 'command_cb', function (e)
     -- Handle: /hgather show - Shows the hgather object.
     if (#args >= 2 and args[2]:any('show')) then
         -- reset last dig on show command to reset timeout counter
-        hgather.last_attempt = ashita.time.clock()['ms'];
+        hgather.last_attempt = 0;
         hgather.settings.visible[1] = true;
         return;
     end
@@ -909,12 +908,12 @@ ashita.events.register('d3d_present', 'present_cb', function ()
     local last_attempt_secs = (ashita.time.clock()['ms'] - hgather.last_attempt) / 1000.0;
     render_editor();
 
-    if (last_attempt_secs > hgather.settings.display_timeout[1]) then
+    if (hgather.last_attempt ~= 0 and last_attempt_secs > hgather.settings.display_timeout[1]) then
         hgather.settings.visible[1] = false;
     end
 
     -- Hide the hgather object if not visible..
-    if (not hgather.settings.visible[1]) then
+    if (hgather.settings.visible[1] == false) then
         return;
     end
 
