@@ -163,10 +163,11 @@ end
 
 function render_general_config(settings)
     imgui.Text('General Settings');
-    imgui.BeginChild('settings_general', { 0, 200, }, true);
+    imgui.BeginChild('settings_general', { 0, 180, }, true);
         if( imgui.Checkbox('Visible', hgather.settings.visible) ) then
             -- if the checkbox is interacted with, reset the last_attempt
             -- to force the window back open
+            hgather.settings.visible[1] = true;
             hgather.last_attempt = ashita.time.clock()['ms'];
         end
         imgui.ShowHelp('Toggles if HGather is visible or not.');
@@ -190,14 +191,14 @@ function render_general_config(settings)
         imgui.ShowHelp('Toggles whether we reset rewards each time the addon is loaded.');
     imgui.EndChild();
     imgui.Text('Chocobo Digging Display Settings');
-    imgui.BeginChild('dig_general', { 0, 75, }, true);
+    imgui.BeginChild('dig_general', { 0, 60, }, true);
         imgui.Checkbox('Digging Skillups', hgather.settings.digging.skillup_display);
         imgui.ShowHelp('Toggles if digging skillups are shown.');
         imgui.Checkbox('Subtract Greens', hgather.settings.digging.gysahl_subtract);
         imgui.ShowHelp('Toggles if gysahl greens are automatically subtracted from gil earned.');
     imgui.EndChild();
-    imgui.Text('Mining Display Settings');
-    imgui.BeginChild('mine_general', { 0, 50, }, true);
+    imgui.Text('Mining/Excavating Display Settings');
+    imgui.BeginChild('mine_general', { 0, 40, }, true);
         imgui.Checkbox('Subtract Pickaxes', hgather.settings.mining.pickaxe_subtract);
         imgui.ShowHelp('Toggles if pickaxe breaks are automatically subtracted from gil earned.');
     imgui.EndChild();
@@ -216,7 +217,7 @@ function render_items_config(settings)
 
         local temp_strings = T{ };
         temp_strings[1] = table.concat(hgather.settings.item_index, '\n');
-        if(imgui.InputTextMultiline('\nItem Prices', temp_strings, 8192, {0, 410})) then
+        if(imgui.InputTextMultiline('\nItem Prices', temp_strings, 8192, {0, 400})) then
             hgather.settings.item_index = split(temp_strings[1], '\n');
             table.sort(hgather.settings.item_index);
         end
@@ -456,10 +457,10 @@ function format_exca_output()
 end
 
 function clear_rewards(args)
-    hgather.last_attempt = ashita.time.clock()['ms'];
+    hgather.last_attempt = 0;
     hgather.settings.first_attempt = 0;
 
-    if (#args == 2) then
+    if (args == nil or #args == 2) then
         -- digging
         hgather.settings.dig_rewards = { };
         hgather.settings.dig_items = 0;
@@ -771,7 +772,9 @@ end);
 * desc : Event called when the addon is processing outgoing packets.
 --]]
 ashita.events.register('packet_out', 'packet_out_cb', function (e)
-    if e.id == 0x01A then -- digging / clamming
+    local last_attempt_secs = (ashita.time.clock()['ms'] - hgather.last_attempt) / 1000.0;
+
+    if e.id == 0x01A and last_attempt_secs > 2 then -- digging / clamming
         if struct.unpack('H', e.data_modified, 0x0A) == 0x1104 then -- digging
             hgather.attempt_type = 'digging';
             dig_diff = (ashita.time.clock()['ms'] - hgather.last_attempt);
@@ -796,7 +799,7 @@ ashita.events.register('packet_out', 'packet_out_cb', function (e)
                 end
             end
         end
-    elseif e.id == 0x36 then -- helm
+    elseif e.id == 0x36 and last_attempt_secs > 2 then -- helm
         local target = GetEntity(AshitaCore:GetMemoryManager():GetTarget():GetTargetIndex(0));
         -- Mining
         if (target ~= nil and target.Name ~= nil and target.Name == 'Mining Point') then
@@ -824,23 +827,22 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
     message = string.lower(message);
     message = string.strip_colors(message);
 
-    -- check for dig skillups
-    dig_skill_up = string.match(message, 'skill increases by (.*) raising');
-    if (dig_skill_up and last_attempt_secs < 60) then
-        hgather.digging.dig_skillup = hgather.digging.dig_skillup + dig_skill_up;
-    end
-
     if (hgather.attempt_type == 'digging' and last_attempt_secs < 60) then
         -- digging text to monitor
         dig_success = string.match(message, 'obtained: (.*).');
         dig_unable = string.contains(message, 'you dig and you dig');
+        -- check for dig skillups
+        dig_skill_up = string.match(message, 'skill increases by (.*) raising');
+        if (dig_skill_up and last_attempt_secs < 60) then
+            hgather.digging.dig_skillup = hgather.digging.dig_skillup + dig_skill_up;
+        end
+
         -- digging logic
         if (dig_success or dig_unable) then
             --skillup count
 
             handle_dig(dig_success);
         end
-        hgather.attempt_type = '';
     elseif (hgather.attempt_type == 'mining' and last_attempt_secs < 60) then
         --[[
             mining text to monitor
