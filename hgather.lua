@@ -31,6 +31,7 @@ local d3d8dev = d3d.get_device();
 local default_settings = T{
     visible = T{ true, },
     moon_display = T{ true, },
+    weather_display = T{ true, },
     display_timeout = T{ 600 },
     opacity = T{ 1.0, },
     padding = T{ 1.0, },
@@ -163,7 +164,7 @@ end
 
 function render_general_config(settings)
     imgui.Text('General Settings');
-    imgui.BeginChild('settings_general', { 0, 180, }, true);
+    imgui.BeginChild('settings_general', { 0, 210, }, true);
         if ( imgui.Checkbox('Visible', hgather.settings.visible) ) then
             -- if the checkbox is interacted with, reset the last_attempt
             -- to force the window back open
@@ -186,6 +187,8 @@ function render_general_config(settings)
 
         imgui.Checkbox('Moon Display', hgather.settings.moon_display);
         imgui.ShowHelp('Toggles if moon phase / percent is shown.');
+        imgui.Checkbox('Weather Display', hgather.settings.weather_display);
+        imgui.ShowHelp('Toggles if current weather is shown.');
         imgui.Checkbox('Reset Rewards On Load', hgather.settings.reset_on_load);
         imgui.ShowHelp('Toggles whether we reset rewards each time the addon is loaded.');
     imgui.EndChild();
@@ -288,6 +291,7 @@ function format_dig_output()
     local moon_table = GetMoon();
     local moon_phase = moon_table.MoonPhase;
     local moon_percent = moon_table.MoonPhasePercent;
+    local weather = GetWeather();
 
     local output_text = '';
 
@@ -302,6 +306,9 @@ function format_dig_output()
     output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
     if (hgather.settings.moon_display[1]) then
         output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
+    end
+    if (hgather.settings.weather_display[1]) then
+        output_text = output_text .. '\nWeather: ' + weather;
     end
     if (hgather.settings.digging.skillup_display[1]) then
         output_text = output_text .. '\nSkillups: ' + hgather.digging.dig_skillup;
@@ -514,7 +521,7 @@ end
 function GetWeather()
     local pWeather = ashita.memory.find('FFXiMain.dll', 0, '66A1????????663D????72', 0, 0);
     local pointer = ashita.memory.read_uint32(pWeather + 0x02);
-    return ashita.memory.read_uint8(pointer + 0);
+    return Weather[ashita.memory.read_uint8(pointer + 0)];
 end
 
 function GetMoon()
