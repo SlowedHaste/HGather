@@ -31,7 +31,7 @@ local d3d8dev = d3d.get_device();
 local default_settings = T{
     visible = T{ true, },
     moon_display = T{ true, },
-    weather_display = T{ true, },
+    weather_display = T{ false, },
     display_timeout = T{ 600 },
     opacity = T{ 1.0, },
     padding = T{ 1.0, },
@@ -46,6 +46,7 @@ local default_settings = T{
         gysahl_cost = T{ 62 },
         gysahl_subtract = T{ false, },
         skillup_display = T{ true, },
+        ore_display = T{ false, },
     },
     mining = T {
         pickaxe_cost = T{ 120 },
@@ -193,9 +194,11 @@ function render_general_config(settings)
         imgui.ShowHelp('Toggles whether we reset rewards each time the addon is loaded.');
     imgui.EndChild();
     imgui.Text('Chocobo Digging Display Settings');
-    imgui.BeginChild('dig_general', { 0, 60, }, true);
+    imgui.BeginChild('dig_general', { 0, 90, }, true);
         imgui.Checkbox('Digging Skillups', hgather.settings.digging.skillup_display);
         imgui.ShowHelp('Toggles if digging skillups are shown.');
+        imgui.Checkbox('Show if digging ore is possible?', hgather.settings.digging.ore_display);
+        imgui.ShowHelp('Toggles if digging ore possible is shown.');
         imgui.Checkbox('Subtract Greens', hgather.settings.digging.gysahl_subtract);
         imgui.ShowHelp('Toggles if gysahl greens are automatically subtracted from gil earned.');
     imgui.EndChild();
@@ -310,8 +313,20 @@ function format_dig_output()
     if (hgather.settings.weather_display[1]) then
         output_text = output_text .. '\nWeather: ' + weather;
     end
+    -- moon phase Waxing Crescent, between 7-24%, active weather (not clear/sunshine/clouds)
+    if (hgather.settings.digging.ore_display[1]) then
+        ore_possible = 'No';
+        if (moon_phase == 'Waxing Crescent' and (moon_percent > 6 and moon_percent < 25)) then
+            local bad_weather = T{'Clear', 'Sunshine', 'Clouds'};
+            if (not bad_weather:contains(weather)) then
+                ore_possible = 'Yes!'
+            end
+        end
+
+        output_text = output_text .. '\nOre Possible?: ' .. ore_possible;
+    end
     if (hgather.settings.digging.skillup_display[1]) then
-        output_text = output_text .. '\nSkillups: ' + hgather.digging.dig_skillup;
+        output_text = output_text .. '\nSkillups: ' .. hgather.digging.dig_skillup;
     end
 
     -- imgui.Separator();
