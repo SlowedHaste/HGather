@@ -8,7 +8,7 @@
 
 addon.name      = 'hgather';
 addon.author    = 'Hastega';
-addon.version   = '1.4';
+addon.version   = '1.5';
 addon.desc      = 'General purpose gathering tracker.';
 addon.link      = 'https://github.com/SlowedHaste/HGather';
 addon.commands  = {'/hgather'};
