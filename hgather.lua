@@ -300,7 +300,7 @@ function format_output()
 
 
     if (hgather.settings.digging.gysahl_subtract[1]) then
-        total_worth = total_worth - (hgather.settings.dig_tries * hgather.settings.gysahl_cost[1]);
+        total_worth = total_worth - (hgather.settings.dig_tries * hgather.settings.digging.gysahl_cost[1]);
         -- only update gil_per_hour every 3 seconds
         if ((ashita.time.clock()['s'] % 3) == 0) then
             hgather.gil_per_hour = math.floor((total_worth / elapsed_time) * 3600); 
