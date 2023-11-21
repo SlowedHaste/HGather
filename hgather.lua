@@ -32,6 +32,7 @@ local default_settings = T{
     visible = T{ true, },
     moon_display = T{ true, },
     weather_display = T{ false, },
+    lastitem_display = T{ false, },
     display_timeout = T{ 600 },
     opacity = T{ 1.0, },
     padding = T{ 1.0, },
@@ -89,6 +90,7 @@ local hgather = T{
     },
 
     last_attempt = 0,
+    last_item = '',
     attempt_type = '',
 
     pricing = T{ },
@@ -99,6 +101,8 @@ local hgather = T{
         dig_per_minute = 0,
         dig_skillup = 0.0,
         dig_gph = 0,
+        greens = 0,
+        zone_empty = T{ false },
     },
     mining = T{
         mine_gph = 0,
@@ -165,7 +169,7 @@ end
 
 function render_general_config(settings)
     imgui.Text('General Settings');
-    imgui.BeginChild('settings_general', { 0, 210, }, true);
+    imgui.BeginChild('settings_general', { 0, 230, }, true);
         if ( imgui.Checkbox('Visible', hgather.settings.visible) ) then
             -- if the checkbox is interacted with, reset the last_attempt
             -- to force the window back open
@@ -190,6 +194,8 @@ function render_general_config(settings)
         imgui.ShowHelp('Toggles if moon phase / percent is shown.');
         imgui.Checkbox('Weather Display', hgather.settings.weather_display);
         imgui.ShowHelp('Toggles if current weather is shown.');
+        imgui.Checkbox('Last Item Display', hgather.settings.lastitem_display);
+        imgui.ShowHelp('Toggles if last item gathered is displayed.');
         imgui.Checkbox('Reset Rewards On Load', hgather.settings.reset_on_load);
         imgui.ShowHelp('Toggles whether we reset rewards each time the addon is loaded.');
     imgui.EndChild();
@@ -287,6 +293,7 @@ end
 -- Format the output used in display window and report
 ----------------------------------------------------------------------------------------------------
 function format_dig_output()
+    local inv = AshitaCore:GetMemoryManager():GetInventory();
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -301,11 +308,28 @@ function format_dig_output()
     if (hgather.settings.dig_tries ~= 0) then
         accuracy = (hgather.settings.dig_items / hgather.settings.dig_tries) * 100;
     end
+
+    -- count greens (only in main inventory)
+    local greens_total = 0;
+    for y = 0, 80 do
+        local item = inv:GetContainerItem(0, y);
+        if (item ~= nil and item.Id == 4545) then
+            greens_total = greens_total + item.Count;
+        end
+    end
         
     output_text = '~~~~~~ HGather Digging Session ~~~~~~';
     output_text = output_text .. '\nAttempted Digs: ' .. hgather.settings.dig_tries .. ' (' .. string.format('%.2f', hgather.digging.dig_per_minute) .. ' dpm)';
     output_text = output_text .. '\nGreens Cost: ' .. format_int(hgather.settings.dig_tries * hgather.settings.digging.gysahl_cost[1]);
+    output_text = output_text .. '\nGreens Remaining: ' .. format_int(greens_total);
     output_text = output_text .. '\nItems Dug: ' .. hgather.settings.dig_items;
+    if (hgather.settings.lastitem_display[1]) then
+        if (hgather.digging.zone_empty[1]) then
+            output_text = output_text .. '\nLast Item: ZONE EMPTY';
+        else
+            output_text = output_text .. '\nLast Item: ' .. hgather.last_item;
+        end
+    end
     output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
     if (hgather.settings.moon_display[1]) then
         output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
@@ -316,7 +340,9 @@ function format_dig_output()
     -- moon phase Waxing Crescent, between 7-24%, active weather (not clear/sunshine/clouds)
     if (hgather.settings.digging.ore_display[1]) then
         ore_possible = 'No';
-        if (moon_phase == 'Waxing Crescent' and (moon_percent > 6 and moon_percent < 25)) then
+        if (hgather.digging.zone_empty[1]) then
+            ore_possible = 'No - EMPTY ZONE';
+        elseif (moon_phase == 'Waxing Crescent' and (moon_percent > 6 and moon_percent < 25)) then
             local bad_weather = T{'Clear', 'Sunshine', 'Clouds'};
             if (not bad_weather:contains(weather)) then
                 ore_possible = 'Yes!'
@@ -583,6 +609,8 @@ local function handle_dig(dig_success)
         hgather.settings.dig_items = hgather.settings.dig_items + 1;
 
         if (dig_success ~= nil) then
+            hgather.digging.zone_empty[1] = false;
+            hgather.last_item = dig_success;
             if (hgather.settings.dig_rewards[dig_success] == nil) then
                 hgather.settings.dig_rewards[dig_success] = 1;
             elseif (hgather.settings.dig_rewards[dig_success] ~= nil) then
@@ -784,9 +812,13 @@ end);
 --[[
 * event: packet_in
 * desc : Event called when the addon is processing incoming packets.
-ashita.events.register('packet_in', 'packet_in_cb', function (e)
-end);
 --]]
+ashita.events.register('packet_in', 'packet_in_cb', function (e)
+    -- reset zone fatigue notification on zone
+	if( e.id == 0x00B ) then 
+        hgather.digging.zone_empty[1] = false;
+    end
+end);
 
 --[[
 * event: packet_out
@@ -854,16 +886,21 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
         dig_unable = string.contains(message, 'you dig and you dig');
         -- check for dig skillups
         dig_skill_up = string.match(message, 'skill increases by (.*) raising');
+        zone_empty = string.match(message, 'the zone has nothing left to dig up');
+
+        if (zone_empty) then
+            hgather.digging.zone_empty[1] = true;
+        end
+
         if (dig_skill_up and last_attempt_secs < 60) then
             hgather.digging.dig_skillup = hgather.digging.dig_skillup + dig_skill_up;
         end
 
         -- digging logic
         if (dig_success or dig_unable) then
-            --skillup count
-
             handle_dig(dig_success);
         end
+        
     elseif (hgather.attempt_type == 'mining' and last_attempt_secs < 60) then
         --[[
             mining text to monitor
