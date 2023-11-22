@@ -309,6 +309,7 @@ function format_dig_output()
     -- dig accuracy estimate formulas taken from ASB
     local digRate = 0.85;
     local digRank = math.floor(hgather.settings.dig_skill[1] / 10);
+    local itemCap = 100 + (digRank * 10);
     local moonModifier = 1;
     local skillModifier = 0.5 + (digRank / 20);
     local moon_dist = moon_table.MoonPhasePercent;
@@ -338,7 +339,7 @@ function format_dig_output()
     output_text = output_text .. '\nAttempted Digs: ' .. hgather.settings.dig_tries .. ' (' .. string.format('%.2f', hgather.digging.dig_per_minute) .. ' dpm)';
     output_text = output_text .. '\nGreens Cost: ' .. format_int(hgather.settings.dig_tries * hgather.settings.digging.gysahl_cost[1]);
     output_text = output_text .. '\nGreens Remaining: ' .. format_int(greens_total) .. ' (' .. math.floor(greens_total * (digRate * moonModifier * skillModifier)) .. ' est items)';
-    output_text = output_text .. '\nItems Dug: ' .. hgather.settings.dig_items;
+    output_text = output_text .. '\nItems Dug: ' .. hgather.settings.dig_items .. ' (' .. itemCap - hgather.settings.dig_items .. ' to fatigue)';
     if (hgather.settings.lastitem_display[1]) then
         if (hgather.digging.zone_empty[1]) then
             output_text = output_text .. '\nLast Item: ZONE EMPTY';
@@ -346,7 +347,7 @@ function format_dig_output()
             output_text = output_text .. '\nLast Item: ' .. hgather.last_item;
         end
     end
-    output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%% act -- ' .. string.format('%.2f', accEstimate) .. '%% est';
+    output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.1f', accuracy) .. '%% act -- ' .. string.format('%.1f', accEstimate) .. '%% est';
     if (hgather.settings.moon_display[1]) then
         output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
     end
