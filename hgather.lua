@@ -8,24 +8,24 @@
 
 addon.name      = 'hgather';
 addon.author    = 'Hastega';
-addon.version   = '1.4';
+addon.version   = '1.5';
 addon.desc      = 'General purpose gathering tracker.';
 addon.link      = 'https://github.com/SlowedHaste/HGather';
 addon.commands  = {'/hgather'};
 
 require('common');
 local chat      = require('chat');
-local d3d       = require('d3d8');
-local ffi       = require('ffi');
-local fonts     = require('fonts');
+-- local d3d       = require('d3d8');
+-- local ffi       = require('ffi');
+-- local fonts     = require('fonts');
 local imgui     = require('imgui');
-local prims     = require('primitives');
-local scaling   = require('scaling');
+-- local prims     = require('primitives');
+-- local scaling   = require('scaling');
 local settings  = require('settings');
 local data      = require('constants');
 
-local C = ffi.C;
-local d3d8dev = d3d.get_device();
+-- local C = ffi.C;
+-- local d3d8dev = d3d.get_device();
 
 -- Default Settings
 local default_settings = T{
@@ -60,6 +60,7 @@ local default_settings = T{
     dig_rewards = T{ },
     dig_items = 0,
     dig_tries = 0,
+    dig_skill = T{ 0 },
     -- mining rewards
     mine_rewards = T{ },
     mine_items = 0,
@@ -200,7 +201,9 @@ function render_general_config(settings)
         imgui.ShowHelp('Toggles whether we reset rewards each time the addon is loaded.');
     imgui.EndChild();
     imgui.Text('Chocobo Digging Display Settings');
-    imgui.BeginChild('dig_general', { 0, 90, }, true);
+    imgui.BeginChild('dig_general', { 0, 110, }, true);
+        imgui.InputFloat('Digging Skill', hgather.settings.dig_skill, 0.1, 0.1, '%.1f');
+        imgui.ShowHelp('Current digging skill level.');
         imgui.Checkbox('Digging Skillups', hgather.settings.digging.skillup_display);
         imgui.ShowHelp('Toggles if digging skillups are shown.');
         imgui.Checkbox('Show if digging ore is possible?', hgather.settings.digging.ore_display);
@@ -303,6 +306,19 @@ function format_dig_output()
     local moon_percent = moon_table.MoonPhasePercent;
     local weather = GetWeather();
 
+    -- dig accuracy estimate formulas taken from ASB
+    local digRate = 0.85;
+    local digRank = math.floor(hgather.settings.dig_skill[1] / 10);
+    local moonModifier = 1;
+    local skillModifier = 0.5 + (digRank / 20);
+    local moon_dist = moon_table.MoonPhasePercent;
+    if moon_dist < 50 then
+        moon_dist = 100 - moon_dist -- This converts moon phase percent to a number that represents how FAR the moon phase is from 50
+    end
+
+    moonModifier = 1 - (100 - moon_dist) / 100 -- the more the moon phase is from 50, the closer we get to 100% on this modifier.    
+    local accEstimate = (digRate * moonModifier * skillModifier) * 100;
+
     local output_text = '';
 
     if (hgather.settings.dig_tries ~= 0) then
@@ -321,7 +337,7 @@ function format_dig_output()
     output_text = '~~~~~~ HGather Digging Session ~~~~~~';
     output_text = output_text .. '\nAttempted Digs: ' .. hgather.settings.dig_tries .. ' (' .. string.format('%.2f', hgather.digging.dig_per_minute) .. ' dpm)';
     output_text = output_text .. '\nGreens Cost: ' .. format_int(hgather.settings.dig_tries * hgather.settings.digging.gysahl_cost[1]);
-    output_text = output_text .. '\nGreens Remaining: ' .. format_int(greens_total);
+    output_text = output_text .. '\nGreens Remaining: ' .. format_int(greens_total) .. ' (' .. math.floor(greens_total * (digRate * moonModifier * skillModifier)) .. ' est items)';
     output_text = output_text .. '\nItems Dug: ' .. hgather.settings.dig_items;
     if (hgather.settings.lastitem_display[1]) then
         if (hgather.digging.zone_empty[1]) then
@@ -330,7 +346,7 @@ function format_dig_output()
             output_text = output_text .. '\nLast Item: ' .. hgather.last_item;
         end
     end
-    output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
+    output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%% act -- ' .. string.format('%.2f', accEstimate) .. '%% est';
     if (hgather.settings.moon_display[1]) then
         output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
     end
@@ -352,7 +368,7 @@ function format_dig_output()
         output_text = output_text .. '\nOre Possible?: ' .. ore_possible;
     end
     if (hgather.settings.digging.skillup_display[1]) then
-        output_text = output_text .. '\nSkillups: ' .. hgather.digging.dig_skillup;
+        output_text = output_text .. '\nDig skill: ' .. string.format('%.1f', hgather.settings.dig_skill[1]) .. ' (' .. hgather.digging.dig_skillup .. '+)';
     end
 
     -- imgui.Separator();
@@ -885,7 +901,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
         dig_success = string.match(message, 'obtained: (.*).');
         dig_unable = string.contains(message, 'you dig and you dig');
         -- check for dig skillups
-        dig_skill_up = string.match(message, 'skill increases by (.*) raising');
+        dig_skill_up, dig_skill = string.match(message, 'skill increases by (.*) raising it to (.*)!');
         zone_empty = string.match(message, 'the zone has nothing left to dig up');
 
         if (zone_empty) then
@@ -894,6 +910,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
 
         if (dig_skill_up and last_attempt_secs < 60) then
             hgather.digging.dig_skillup = hgather.digging.dig_skillup + dig_skill_up;
+            hgather.settings.dig_skill[1] = dig_skill;
         end
 
         -- digging logic
