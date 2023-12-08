@@ -323,3 +323,26 @@ ItemIndex = T{
     [147] = "dryad root:123",
     [148] = "high-quality crab shell:123",
 };
+
+Weather = T{
+    [0] = 'Clear',
+    [1] = 'Sunshine',
+    [2] = 'Clouds',
+    [3] = 'Fog',
+    [4] = 'Fire',
+    [5] = 'Fire x2',
+    [6] = 'Water',
+    [7] = 'Water x2',
+    [8] = 'Earth',
+    [9] = 'Earth x2',
+    [10] = 'Wind',
+    [11] = 'Wind x2',
+    [12] = 'Ice',
+    [13] = 'Ice x2',
+    [14] = 'Thunder',
+    [15] = 'Thunder x2',
+    [16] = 'Light',
+    [17] = 'Light x2',
+    [18] = 'Dark',
+    [19] = 'Dark x2'
+};
