@@ -15,17 +15,9 @@ addon.commands  = {'/hgather'};
 
 require('common');
 local chat      = require('chat');
--- local d3d       = require('d3d8');
--- local ffi       = require('ffi');
--- local fonts     = require('fonts');
 local imgui     = require('imgui');
--- local prims     = require('primitives');
--- local scaling   = require('scaling');
 local settings  = require('settings');
 local data      = require('constants');
-
--- local C = ffi.C;
--- local d3d8dev = d3d.get_device();
 
 -- Default Settings
 local default_settings = T{
@@ -48,6 +40,7 @@ local default_settings = T{
         gysahl_subtract = T{ false, },
         skillup_display = T{ true, },
         ore_display = T{ false, },
+        dig_skill = T{ 0 },
     },
     mining = T {
         pickaxe_cost = T{ 120 },
@@ -68,7 +61,6 @@ local default_settings = T{
     dig_rewards = T{ },
     dig_items = 0,
     dig_tries = 0,
-    dig_skill = T{ 0 },
     -- mining rewards
     mine_rewards = T{ },
     mine_items = 0,
@@ -226,7 +218,7 @@ function render_general_config(settings)
     imgui.EndChild();
     imgui.Text('Chocobo Digging Display Settings');
     imgui.BeginChild('dig_general', { 0, 110, }, true);
-        imgui.InputFloat('Digging Skill', hgather.settings.dig_skill, 0.1, 0.1, '%.1f');
+        imgui.InputFloat('Digging Skill', hgather.settings.digging.dig_skill, 0.1, 0.1, '%.1f');
         imgui.ShowHelp('Current digging skill level.');
         imgui.Checkbox('Digging Skillups', hgather.settings.digging.skillup_display);
         imgui.ShowHelp('Toggles if digging skillups are shown.');
@@ -340,7 +332,7 @@ function format_dig_output()
 
     -- dig accuracy estimate formulas taken from ASB
     local digRate = 0.85;
-    local digRank = math.floor(hgather.settings.dig_skill[1] / 10);
+    local digRank = math.floor(hgather.settings.digging.dig_skill[1] / 10);
     local itemCap = 100 + (digRank * 10);
     local moonModifier = 1;
     local skillModifier = 0.5 + (digRank / 20);
@@ -401,7 +393,7 @@ function format_dig_output()
         output_text = output_text .. '\nOre Possible?: ' .. ore_possible;
     end
     if (hgather.settings.digging.skillup_display[1]) then
-        output_text = output_text .. '\nDig skill: ' .. string.format('%.1f', hgather.settings.dig_skill[1]) .. ' (' .. hgather.digging.dig_skillup .. '+)';
+        output_text = output_text .. '\nDig skill: ' .. string.format('%.1f', hgather.settings.digging.dig_skill[1]) .. ' (' .. hgather.digging.dig_skillup .. '+)';
     end
 
     -- imgui.Separator();
@@ -1159,7 +1151,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
 
         if (dig_skill_up and last_attempt_secs < 60) then
             hgather.digging.dig_skillup = hgather.digging.dig_skillup + dig_skill_up;
-            hgather.settings.dig_skill[1] = dig_skill;
+            hgather.settings.digging.dig_skill[1] = dig_skill;
         end
 
         -- digging logic
@@ -1262,7 +1254,7 @@ ashita.events.register('d3d_present', 'present_cb', function ()
     if (imgui.Begin('HGather##Display', hgather.settings.visible[1], bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
         imgui.SetWindowFontScale(hgather.settings.font_scale[1]);
         if (imgui.BeginTabBar('##hgather_helmtabbar', ImGuiTabBarFlags_NoCloseWithMiddleMouseButton)) then
-            if (imgui.BeginTabItem('Dig', nil)) then
+            if (imgui.BeginTabItem('Digg', nil)) then
                 imgui.Text(format_dig_output());
                 imgui.EndTabItem();
             end
