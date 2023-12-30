@@ -184,7 +184,7 @@ local function render_editor()
     imgui.End();
 end
 
-local function render_general_config(settings)
+function render_general_config(settings)
     imgui.Text('General Settings');
     imgui.BeginChild('settings_general', { 0, 230, }, true);
         if ( imgui.Checkbox('Visible', hgather.settings.visible) ) then
@@ -238,7 +238,7 @@ local function render_general_config(settings)
     imgui.EndChild();
 end
 
-local function render_items_config(settings)
+function render_items_config(settings)
     imgui.Text('Item Settings');
     imgui.BeginChild('settings_general', { 0, 520, }, true);
 
