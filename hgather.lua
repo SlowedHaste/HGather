@@ -184,7 +184,7 @@ local function render_editor()
     imgui.End();
 end
 
-function render_general_config(settings)
+local function render_general_config(settings)
     imgui.Text('General Settings');
     imgui.BeginChild('settings_general', { 0, 230, }, true);
         if ( imgui.Checkbox('Visible', hgather.settings.visible) ) then
@@ -234,11 +234,11 @@ function render_general_config(settings)
         imgui.Checkbox('Subtract Pickaxes', hgather.settings.mining.pickaxe_subtract);
         imgui.ShowHelp('Toggles if pickaxe breaks are automatically subtracted from gil earned.');
         imgui.Checkbox('Subtract Sickles', hgather.settings.harvest.sickle_subtract);
-        imgui.ShowHelp('Toggles if sickle breaks are automatically subtracted from gil earned.');
+        imgui.ShowHelp('Toggles 350if sickle breaks are automatically subtracted from gil earned.');
     imgui.EndChild();
 end
 
-function render_items_config(settings)
+local function render_items_config(settings)
     imgui.Text('Item Settings');
     imgui.BeginChild('settings_general', { 0, 520, }, true);
 
@@ -263,7 +263,7 @@ function render_items_config(settings)
     imgui.EndChild();
 end
 
-function split(inputstr, sep)
+local function split(inputstr, sep)
     if sep == nil then
         sep = '%s';
     end
@@ -286,6 +286,28 @@ function update_pricing()
         end
 
         hgather.pricing[itemname] = itemvalue;
+    end
+end
+
+local function calculate_dpm(dig_time_ms)
+    hgather.digging.dig_timing[hgather.digging.dig_index] = dig_time_ms;
+
+    local total_count = 0;
+    local total_time = 0;
+    for i, v in ipairs(hgather.digging.dig_timing) do
+      if (i > 1) then
+        if (hgather.digging.dig_timing[i] > hgather.digging.dig_timing[i - 1]) then
+          total_count = total_count + 1;
+          total_time = total_time + (hgather.digging.dig_timing[i] - hgather.digging.dig_timing[i - 1]);
+        end
+      end
+    end
+    hgather.digging.dig_per_minute = 60 / ((total_time / total_count) / 1000.0);
+
+    if ( hgather.digging.dig_index >= #hgather.digging.dig_timing ) then
+        hgather.digging.dig_index = 1;
+    else
+        hgather.digging.dig_index = hgather.digging.dig_index + 1;
     end
 end
 
@@ -319,7 +341,7 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Format the output used in display window and report
 ----------------------------------------------------------------------------------------------------
-function format_dig_output()
+local function format_dig_output()
     local inv = AshitaCore:GetMemoryManager():GetInventory();
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
@@ -430,7 +452,7 @@ function format_dig_output()
     return output_text;
 end
 
-function format_mine_output()
+local function format_mine_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -487,7 +509,7 @@ function format_mine_output()
     return output_text;
 end
 
-function format_exca_output()
+local function format_exca_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -546,7 +568,7 @@ end
 
 
 
-function format_logg_output()
+local function format_logg_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -604,7 +626,7 @@ function format_logg_output()
 end
 
 
-function format_harv_output()
+local function format_harv_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -661,7 +683,7 @@ function format_harv_output()
     return output_text;
 end
 
-function clear_rewards(args)
+local function clear_rewards(args)
     hgather.last_attempt = 0;
     hgather.settings.first_attempt = 0;
 
@@ -1069,26 +1091,9 @@ ashita.events.register('packet_out', 'packet_out_cb', function (e)
     if e.id == 0x01A and last_attempt_secs > 2 then -- digging / clamming
         if struct.unpack('H', e.data_modified, 0x0A) == 0x1104 then -- digging
             hgather.attempt_type = 'digging';
-            dig_diff = (ashita.time.clock()['ms'] - hgather.last_attempt);
             hgather.last_attempt = ashita.time.clock()['ms'];
             if (hgather.settings.first_attempt == 0) then
                 hgather.settings.first_attempt = ashita.time.clock()['ms'];
-            end
-            -- dig timing calculation
-            if (dig_diff > 1500) then
-                hgather.digging.dig_timing[hgather.digging.dig_index] = dig_diff;
-                timing_total = 0;
-                for i=1, #hgather.digging.dig_timing do
-                    timing_total = timing_total + hgather.digging.dig_timing[i];
-                end
-        
-                hgather.digging.dig_per_minute = 60 / ((timing_total / 1000.0) / #hgather.digging.dig_timing);
-    
-                if ( hgather.digging.dig_index >= #hgather.digging.dig_timing ) then
-                    hgather.digging.dig_index = 1;
-                else
-                    hgather.digging.dig_index = hgather.digging.dig_index + 1;
-                end
             end
         end
     elseif e.id == 0x36 and last_attempt_secs > 1 then -- helm
@@ -1156,6 +1161,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
 
         -- digging logic
         if (dig_success or dig_unable) then
+            calculate_dpm(hgather.last_attempt);
             handle_dig(dig_success);
         end
         
