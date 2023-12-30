@@ -263,7 +263,7 @@ function render_items_config(settings)
     imgui.EndChild();
 end
 
-local function split(inputstr, sep)
+function split(inputstr, sep)
     if sep == nil then
         sep = '%s';
     end
