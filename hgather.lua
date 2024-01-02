@@ -1166,7 +1166,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
         end
         
     elseif (hgather.attempt_type == 'mining' and last_attempt_secs < 60) then
-        mine_success = string.match(message, 'dig up a ([^,!]+)');
+        mine_success = string.match(message, 'dig up an? ([^,!]+)');
         mine_break = string.match(message, 'our pickaxe breaks');
         mine_unable = string.match(message, 'unable to mine anything.');
 	    
@@ -1181,7 +1181,7 @@ ashita.events.register('text_in', 'text_in_cb', function (e)
         hgather.attempt_type = '';
     elseif (hgather.attempt_type == 'excavate' and last_attempt_secs < 60) then
         -- excavating to monitor
-        exca_success = string.match(message, 'dig up a ([^,!]+)');
+        exca_success = string.match(message, 'dig up an? ([^,!]+)');
         exca_break = string.match(message, 'our pickaxe breaks');
         exca_unable = string.match(message, 'unable to mine anything.');
 	    
