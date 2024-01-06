@@ -132,7 +132,7 @@ local hgather = T{
 --[[
 * Renders the HGather settings editor.
 --]]
-local function render_editor()
+function render_editor()
     if (not hgather.editor.is_open[1]) then
         return;
     end
@@ -289,7 +289,7 @@ function update_pricing()
     end
 end
 
-local function calculate_dpm(dig_time_ms)
+function calculate_dpm(dig_time_ms)
     hgather.digging.dig_timing[hgather.digging.dig_index] = dig_time_ms;
 
     local total_count = 0;
@@ -341,7 +341,7 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Format the output used in display window and report
 ----------------------------------------------------------------------------------------------------
-local function format_dig_output()
+function format_dig_output()
     local inv = AshitaCore:GetMemoryManager():GetInventory();
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
@@ -452,7 +452,7 @@ local function format_dig_output()
     return output_text;
 end
 
-local function format_mine_output()
+function format_mine_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -509,7 +509,7 @@ local function format_mine_output()
     return output_text;
 end
 
-local function format_exca_output()
+function format_exca_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -568,7 +568,7 @@ end
 
 
 
-local function format_logg_output()
+function format_logg_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -626,7 +626,7 @@ local function format_logg_output()
 end
 
 
-local function format_harv_output()
+function format_harv_output()
     local elapsed_time = ashita.time.clock()['s'] - math.floor(hgather.settings.first_attempt / 1000.0);
 
     local total_worth = 0;
@@ -683,7 +683,7 @@ local function format_harv_output()
     return output_text;
 end
 
-local function clear_rewards(args)
+function clear_rewards(args)
     hgather.last_attempt = 0;
     hgather.settings.first_attempt = 0;
 
@@ -781,7 +781,7 @@ end
     * partially from hxui/helpers.lua
 ]]--
 
-local function get_target()
+function get_target()
     local player_target = AshitaCore:GetMemoryManager():GetTarget();
 
     if (player_target == nil) then
@@ -797,7 +797,7 @@ end
     *
     * @param {string} dig_success - Item returned from a successful dig
 ]]
-local function handle_dig(dig_success)
+function handle_dig(dig_success)
     -- force display to show if it is hidden after an attempt
     if (hgather.settings.visible[1] == false) then
         hgather.settings.visible[1] = true
@@ -828,7 +828,7 @@ end
     *
     * @param {string} mine_success - Item returned from successful mining
 ]]
-local function handle_mine(mine_success)
+function handle_mine(mine_success)
     -- force display to show if it is hidden after an attempt
     if (hgather.settings.visible[1] == false) then
         hgather.settings.visible[1] = true
@@ -856,7 +856,7 @@ end
     *
     * @param {string} mine_success - Item returned from successful mining
 ]]
-local function handle_exca(exca_success)
+function handle_exca(exca_success)
     -- force display to show if it is hidden after an attempt
     if (hgather.settings.visible[1] == false) then
         hgather.settings.visible[1] = true
@@ -885,7 +885,7 @@ end
     *
     * @param {string} mine_success - Item returned from successful mining
 ]]
-local function handle_harv(harv_success)
+function handle_harv(harv_success)
     -- force display to show if it is hidden after an attempt
     if (hgather.settings.visible[1] == false) then
         hgather.settings.visible[1] = true
@@ -914,7 +914,7 @@ end
     *
     * @param {string} mine_success - Item returned from successful mining
 ]]
-local function handle_logg(harv_success)
+function handle_logg(harv_success)
     -- force display to show if it is hidden after an attempt
     if (hgather.settings.visible[1] == false) then
         hgather.settings.visible[1] = true
@@ -943,7 +943,7 @@ end
 *
 * @param {boolean} isError - Flag if this function was invoked due to an error.
 --]]
-local function print_help(isError)
+function print_help(isError)
     -- Print the help header..
     if (isError) then
         print(chat.header(addon.name):append(chat.error('Invalid command syntax for command: ')):append(chat.success('/' .. addon.name)));
