@@ -273,12 +273,12 @@ function format_output()
     output_text = output_text .. '\nItems Dug: ' .. hgather.settings.dig_items;
     output_text = output_text .. '\nDig Accuracy: ' .. string.format('%.2f', accuracy) .. '%%';
     if (hgather.settings.moon_display[1]) then
-        output_text = output_text .. '\nMoon: ' + moon_phase + ' ('+ moon_percent + '%%)';
+        output_text = output_text .. '\nMoon: ' .. tostring(moon_phase) .. ' (' .. tostring(moon_percent) .. '%%)';
     end
     if (hgather.settings.digging.skillup_display[1]) then
         --Only show skillup line if one was seen during session
         if (hgather.digging.dig_skillup ~= 0.0) then
-            output_text = output_text .. '\nSkillups: ' + hgather.digging.dig_skillup;
+            output_text = output_text .. '\nSkillups: ' .. tostring(hgather.digging.dig_skillup);
         end
     end
 
@@ -616,7 +616,11 @@ ashita.events.register('d3d_present', 'present_cb', function ()
     imgui.SetNextWindowBgAlpha(hgather.settings.opacity[1]);
     imgui.SetNextWindowSize({ -1, -1, }, ImGuiCond_Always);
     if (imgui.Begin('HGather##Display', hgather.settings.visible[1], bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_AlwaysAutoResize, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav))) then
-        imgui.SetWindowFontScale(hgather.settings.font_scale[1]);
+        if (imgui.SetWindowFontScale ~= nil) then
+            imgui.SetWindowFontScale(hgather.settings.font_scale[1]);
+        elseif (imgui.SetFontScale ~= nil) then
+            imgui.SetFontScale(hgather.settings.font_scale[1]);
+        end
         output_text = format_output();
         imgui.Text(output_text);
     end
